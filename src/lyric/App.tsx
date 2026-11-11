@@ -12,7 +12,9 @@ import { KaraokeChallenge } from './components/KaraokeChallenge';
 import { SentenceBuilder } from './components/SentenceBuilder';
 import { SongImportModal } from './components/SongImportModal';
 import { LyricMv } from './components/LyricMv';
+import { VocabBreak } from './components/VocabBreak';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
+import { cet6InSong, firstChorusEnd, type CetHit } from './utils/cet6';
 
 const savedCourses = (Array.isArray(bundledCourses) ? bundledCourses : []) as Song[];
 const initialSongs = savedCourses;
@@ -48,6 +50,8 @@ export default function App() {
   const [playError, setPlayError] = useState("");
   const [syncOffset, setSyncOffset] = useState<number>(0);
   const playAfterSelect = useRef(false);
+  const vocabHeld = useRef(false);
+  const [vocabWords, setVocabWords] = useState<CetHit[] | null>(null);
 
   // Load permanently saved courses from data/courses.json on mount
   useEffect(() => {
@@ -108,6 +112,8 @@ export default function App() {
       setIsPlaying(false);
     }
     setSelectedGrammarLineIdx(0);
+    vocabHeld.current = false;
+    setVocabWords(null);
   }, [currentSong]);
 
   // Audio engine time & duration update callbacks
@@ -152,6 +158,25 @@ export default function App() {
     }
     activeLineIndex = candidate;
   }
+
+  const chorusAt = firstChorusEnd(currentSong);
+  useEffect(() => {
+    if (!isPlaying || vocabHeld.current) return;
+    if (chorusAt <= 0 || calibratedTime < chorusAt) return;
+    const hits = cet6InSong(currentSong);
+    vocabHeld.current = true;
+    if (!hits.length) return;
+    audioEngine.pause();
+    setIsPlaying(false);
+    setVocabWords(hits);
+  }, [calibratedTime, isPlaying, chorusAt, currentSong]);
+
+  const continueAfterVocab = () => {
+    setVocabWords(null);
+    setPlayError("");
+    audioEngine.play();
+    setIsPlaying(true);
+  };
 
   const handleAdjustSyncOffset = (delta: number) => {
     setSyncOffset((prev) => Math.round((prev + delta) * 10) / 10);
@@ -544,6 +569,10 @@ export default function App() {
         onClose={() => setIsImportModalOpen(false)}
         onSongImported={handleSongImported}
       />
+
+      {vocabWords && vocabWords.length > 0 && (
+        <VocabBreak words={vocabWords} onContinue={continueAfterVocab} />
+      )}
 
       <audio
         ref={(node) => {

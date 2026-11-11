@@ -1,10 +1,38 @@
 import React, { useEffect, useRef } from 'react';
 import { Song } from '../types';
 
-const CLIPS: Array<{ match: RegExp; src: string }> = [
+const CLIPS: Array<{ match: RegExp; src: string; wide?: boolean }> = [
   { match: /talking to the moon/i, src: '/mv/moon-fast.mp4' },
   { match: /count on me/i, src: '/mv/count-on-me-fast.mp4' },
+  { match: /^someone like you$/i, src: '/mv/someone-like-you-fast.mp4', wide: true },
+  { match: /^blank space$/i, src: '/mv/blank-space-fast.mp4', wide: true },
+  { match: /^lovely$/i, src: '/mv/lovely-fast.mp4', wide: true },
 ];
+
+function sungWords(text: string, start: number, end: number, now: number) {
+  const parts = text.split(/(\s+)/);
+  const words = parts.filter((part) => part.trim());
+  const span = Math.max(0.3, end - start);
+  const ratio = Math.max(0, Math.min(1, (now - start) / span));
+  const cursor = ratio * words.length;
+  let wordIndex = 0;
+  return parts.map((part, index) => {
+    if (!part.trim()) return <span key={index}>{part}</span>;
+    const fill = wordIndex + 1 <= cursor ? 1 : wordIndex < cursor ? cursor - wordIndex : 0;
+    wordIndex += 1;
+    return (
+      <span key={index} className="relative inline-block text-white/60">
+        <span
+          className="absolute inset-y-0 left-0 overflow-hidden whitespace-nowrap text-amber-300"
+          style={{ width: `${Math.round(fill * 100)}%` }}
+        >
+          {part}
+        </span>
+        {part}
+      </span>
+    );
+  });
+}
 
 interface LyricMvProps {
   song: Song;
@@ -25,6 +53,10 @@ export const LyricMv: React.FC<LyricMvProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const line = song.lines[activeLineIndex];
+  const next = song.lines[activeLineIndex + 1];
+  const start = line?.startTime ?? 0;
+  const end = line && line.endTime > start ? line.endTime : next?.startTime ?? start + 4;
+  const showing = Boolean(line?.text) && currentTime + 0.05 >= start;
   const clip = CLIPS.find((item) => item.match.test(song.title));
 
   const playClip = () => {
@@ -75,7 +107,7 @@ export const LyricMv: React.FC<LyricMvProps> = ({
         </button>
       </div>
       <div
-        className="relative mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-slate-950 shadow-lg aspect-[9/16] cursor-pointer"
+        className={`relative mx-auto w-full overflow-hidden rounded-3xl bg-slate-950 shadow-lg cursor-pointer ${clip?.wide ? 'aspect-video max-w-3xl' : 'aspect-[9/16] max-w-md'}`}
         onClick={toggle}
       >
         {clip ? (
@@ -83,7 +115,7 @@ export const LyricMv: React.FC<LyricMvProps> = ({
             key={clip.src}
             ref={videoRef}
             src={clip.src}
-            className="absolute inset-0 h-full w-full object-cover"
+            className={`absolute inset-0 h-full w-full ${clip.wide ? 'object-contain' : 'object-cover'}`}
             muted
             playsInline
             preload="auto"
@@ -91,7 +123,7 @@ export const LyricMv: React.FC<LyricMvProps> = ({
         ) : (
           <div className="absolute inset-0 bg-gradient-to-b from-slate-800 to-slate-950" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/20" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
         <button
           type="button"
           onClick={(event) => {
@@ -102,13 +134,24 @@ export const LyricMv: React.FC<LyricMvProps> = ({
         >
           {isPlaying ? '暂停' : '播放'}
         </button>
-        <div className="absolute inset-x-0 bottom-0 p-5 text-white">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4 text-center text-white">
           <p className="text-[11px] tracking-wide text-amber-100/90">
             {song.artist} · {song.title}
           </p>
-          <p className="mt-2 text-xl font-bold leading-snug [text-wrap:balance]">
-            {line?.text || '按播放'}
-          </p>
+          {showing && line ? (
+            <>
+              <p className="mt-2 text-xl font-bold leading-snug [text-wrap:balance] drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                {sungWords(line.text, start, end, currentTime)}
+              </p>
+              {line.translation ? (
+                <p className="mt-1 text-sm leading-snug text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                  {line.translation}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-white/70">按播放</p>
+          )}
         </div>
       </div>
     </div>

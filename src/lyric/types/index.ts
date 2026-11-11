@@ -37,6 +37,8 @@ export interface LyricLine {
   explanation: string;
   chunks: GrammarChunk[];
   cloze?: ClozeQuestion;
+  /** 歌词被拆成两行时，学习页显示这一整句。 */
+  fullSentence?: string;
 }
 
 export interface KeyTakeawayPattern {
@@ -56,6 +58,7 @@ export interface Song {
   grammarTheme: string;
   coverImage?: string;
   audioUrl?: string; // Optional external mp3 or uses acoustic synth
+  videoUrl?: string;
   duration?: number; // Total audio track duration in seconds
   tempoBpm: number;
   keySignature: string;
@@ -65,6 +68,14 @@ export interface Song {
   isPermanentlySaved?: boolean;
   savedAt?: string;
   lines: LyricLine[];
+  spokenTip?: string;
+  coachPrompt?: string;
+  lecture?: number;
+  practice?: {
+    text: string;
+    patternTemplate: string;
+    cloze: ClozeQuestion;
+  };
 }
 
 export type LearningMode = 'listen' | 'grammar' | 'karaoke' | 'builder' | 'import' | 'mv';

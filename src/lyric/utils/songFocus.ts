@@ -21,10 +21,9 @@ function isTheySayLine(text: string): boolean {
 }
 
 export function focusPoint(song: Pick<Song, "grammarTheme" | "title" | "lines">): string {
-  const theme = song.grammarTheme || "";
-  if (theme === FUTURE_POINT || theme === ALREADY_POINT || theme === "If 后面别加 will") {
-    return theme === "If 后面别加 will" ? FUTURE_POINT : theme;
-  }
+  const theme = (song.grammarTheme || "").trim();
+  if (theme === "If 后面别加 will") return FUTURE_POINT;
+  if (theme) return theme;
   if (/talking to the moon/i.test(song.title || "") || song.lines.some((line) => isTheySayLine(line.text))) {
     return ALREADY_POINT;
   }
@@ -32,15 +31,25 @@ export function focusPoint(song: Pick<Song, "grammarTheme" | "title" | "lines">)
   return FUTURE_POINT;
 }
 
-export function spokenTip(song: Pick<Song, "grammarTheme" | "title" | "lines">): string {
-  return focusPoint(song) === ALREADY_POINT ? ALREADY_TIP : FUTURE_TIP;
+export function spokenTip(song: Pick<Song, "grammarTheme" | "title" | "lines" | "spokenTip">): string {
+  if (song.spokenTip) return song.spokenTip;
+  const point = focusPoint(song);
+  if (point === ALREADY_POINT) return ALREADY_TIP;
+  if (point === FUTURE_POINT) return FUTURE_TIP;
+  return song.lines.find((line) => line.explanation)?.explanation || "";
 }
 
 export function focusLines(song: Pick<Song, "grammarTheme" | "title" | "lines">): LyricLine[] {
-  if (focusPoint(song) === ALREADY_POINT) {
+  const point = focusPoint(song);
+  const tagged = song.lines.filter((line) => line.text.trim() && line.grammarPoint === point);
+  if (tagged.length) return tagged;
+  if (point === ALREADY_POINT) {
     return song.lines.filter((line) => line.text.trim() && isTheySayLine(line.text));
   }
-  return song.lines.filter((line) => line.text.trim() && isIfLine(line.text));
+  if (point === FUTURE_POINT) {
+    return song.lines.filter((line) => line.text.trim() && isIfLine(line.text));
+  }
+  return [];
 }
 
 export function isStudyLine(song: Pick<Song, "grammarTheme" | "title" | "lines">, line: LyricLine): boolean {
@@ -59,6 +68,13 @@ export function wholeBlank(song: Pick<Song, "lines">, line: LyricLine): {
   blank: string;
   translation: string;
 } {
+  if (line.fullSentence) {
+    return {
+      text: line.fullSentence,
+      blank: line.cloze?.sentenceWithBlank || line.fullSentence,
+      translation: line.translation,
+    };
+  }
   const blank = line.cloze?.sentenceWithBlank || line.text;
   const next = sungAfter(song, line);
   const ifOnly = /^\s*(and\s+)?if\b/i.test(line.text) && !/\b(i'll|will)\b/i.test(line.text);
@@ -72,7 +88,7 @@ export function wholeBlank(song: Pick<Song, "lines">, line: LyricLine): {
   };
 }
 
-export function madeExample(song: Pick<Song, "grammarTheme" | "title" | "lines">): {
+export function madeExample(song: Pick<Song, "grammarTheme" | "title" | "lines" | "practice">): {
   kind: "made";
   text: string;
   grammarPoint: string;
@@ -80,6 +96,15 @@ export function madeExample(song: Pick<Song, "grammarTheme" | "title" | "lines">
   cloze: ClozeQuestion;
 } {
   const point = focusPoint(song);
+  if (song.practice?.cloze) {
+    return {
+      kind: "made",
+      text: song.practice.text,
+      grammarPoint: point,
+      patternTemplate: song.practice.patternTemplate,
+      cloze: song.practice.cloze,
+    };
+  }
   if (point === ALREADY_POINT) {
     return {
       kind: "made",

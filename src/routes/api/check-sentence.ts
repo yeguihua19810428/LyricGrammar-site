@@ -24,6 +24,7 @@ async function askConfiguredModel(input: {
     },
     body: JSON.stringify({
       model: input.model,
+      thinking: { type: "disabled" },
       temperature: 0.2,
       messages: [
         {
@@ -71,13 +72,43 @@ export const Route = createFileRoute("/api/check-sentence")({
     handlers: {
       POST: async ({ request }) => {
         const body = await request.json().catch(() => ({}));
+        const instruction = String(body.instruction || "").trim();
         const studentSentence = String(body.studentSentence || "");
         const promptContext = String(body.promptContext || "");
         const formula = String(body.formula || "");
         const savedKey = await readDeepseekKey();
         const base = process.env.CHECK_AI_BASE_URL || (savedKey ? "https://api.deepseek.com/v1" : "");
         const key = process.env.CHECK_AI_API_KEY || savedKey;
-        const model = process.env.CHECK_AI_MODEL || "deepseek-chat";
+        const model = process.env.CHECK_AI_MODEL || "deepseek-flash";
+        if (instruction && base && key && studentSentence.trim()) {
+          try {
+            const endpoint = base.replace(/\/$/, "") + "/chat/completions";
+            const response = await fetch(endpoint, {
+              method: "POST",
+              headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+              body: JSON.stringify({
+                model,
+                thinking: { type: "disabled" },
+                temperature: 0.2,
+                messages: [{
+                  role: "user",
+                  content: `要分析的英文句子：\n${studentSentence}\n\n请分析上面这句英文，不要说没看到句子。要求：\n${instruction}`,
+                }],
+              }),
+              signal: AbortSignal.timeout(20000),
+            });
+            if (response.status === 401) {
+              return Response.json({ error: "auth" });
+            }
+            if (response.ok) {
+              const data = await response.json();
+              const reply = String(data?.choices?.[0]?.message?.content || "").trim();
+              if (reply) return Response.json({ reply, source: "configured-ai" });
+            }
+          } catch {
+            // Fall through to the local note.
+          }
+        }
         if (base && key && studentSentence.trim()) {
           try {
             const feedback = await askConfiguredModel({

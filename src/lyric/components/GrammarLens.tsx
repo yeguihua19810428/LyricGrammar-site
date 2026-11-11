@@ -1,6 +1,6 @@
 import React from 'react';
 import { Song, LyricLine } from '../types';
-import { focusLines, sungAfter, spokenTip } from '../utils/songFocus';
+import { focusLines, spokenTip, wholeBlank } from '../utils/songFocus';
 
 interface GrammarLensProps {
   song: Song;
@@ -21,6 +21,7 @@ export const GrammarLens: React.FC<GrammarLensProps> = ({
   const selected = song.lines[selectedLineIndex];
   const currentLine: LyricLine | undefined =
     (selected && studyLines.includes(selected) ? selected : studyLines[0]) || song.lines[0];
+  const whole = currentLine ? wholeBlank(song, currentLine) : undefined;
 
   if (!currentLine) {
     return (
@@ -69,10 +70,10 @@ export const GrammarLens: React.FC<GrammarLensProps> = ({
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xl font-bold text-slate-900 tracking-tight">
-                “{currentLine.text}”
+                “{whole?.text || currentLine.text}”
               </p>
               <p className="text-sm text-slate-500 mt-1.5">
-                {currentLine.translation}
+                {whole?.translation || currentLine.translation}
               </p>
             </div>
             <button
@@ -85,11 +86,6 @@ export const GrammarLens: React.FC<GrammarLensProps> = ({
         </div>
 
         <p className="text-sm text-slate-700 leading-relaxed mb-4">{spokenTip(song)}</p>
-        {sungAfter(song, currentLine) && (
-          <p className="text-sm text-slate-500 mb-4">
-            接着唱：{sungAfter(song, currentLine)?.text}
-          </p>
-        )}
         <button
           onClick={() => onStartSentenceBuilder(currentLine.text)}
           className="w-full py-2 px-3 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg cursor-pointer"
