@@ -405,5 +405,27 @@
     "alreadyInRepoPublicAudio": false,
     "audioMissingOnLocalDrive": false,
     "note": "本机有音频，没有对齐的 lrc。歌词按通行原文写入，时间戳待对齐后再补。"
+  },
+  {
+    "lecture": 26,
+    "title": "Everybody Hates Me",
+    "artist": "The Chainsmokers",
+    "localPath": "/home/vincent/壹仁AI英语/欧美音乐/Uploaded_to_Drive/【收藏过百万644首欧美粉必听带歌词】收藏过百万热歌 无损音质/Everybody Hates Me - The Chainsmokers.flac",
+    "alignedPath": null,
+    "suggestedPublicName": "The_Chainsmokers_-_Everybody_Hates_Me.mp3",
+    "alreadyInRepoPublicAudio": false,
+    "audioMissingOnLocalDrive": false,
+    "note": "课件细点配歌新增，仅写入本机路径，不上传、不拷进公开仓库。"
+  },
+  {
+    "lecture": 33,
+    "title": "Turn Back Time",
+    "artist": "Rich Edwards, Emelie",
+    "localPath": "/home/vincent/壹仁AI英语/欧美音乐/Uploaded_to_Drive/【收藏过百万644首欧美粉必听带歌词】收藏过百万热歌 无损音质/Turn Back Time - Rich Edwards、Emelie.flac",
+    "alignedPath": null,
+    "suggestedPublicName": "Rich_Edwards_Emelie_-_Turn_Back_Time.mp3",
+    "alreadyInRepoPublicAudio": false,
+    "audioMissingOnLocalDrive": false,
+    "note": "课件细点配歌新增，仅写入本机路径，不上传、不拷进公开仓库。"
   }
 ]
