@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { readUserCourses } from "./courseLibrary";
 import { readCoachPrompt, readDeepseekKey } from "@/server/deepseekKey";
+import { loadCoursewarePoints, loadStudentSongs } from "@/server/studentCatalog";
 import { focusPoint, madeExample, spokenTip, wholeBlank } from "@/lyric/utils/songFocus";
 import type { Song } from "@/lyric/types";
 
@@ -110,6 +110,7 @@ function renderPlayer(
   book: unknown = [],
   readings: unknown = {},
   pointExam: unknown = {},
+  points: unknown = [],
 ): string {
   const slim = songs.map((song) => ({
     title: song.title,
@@ -121,7 +122,7 @@ function renderPlayer(
     focus: song.grammarTheme,
     tip: song.spokenTip || "",
     coach: song.coachPrompt || "",
-    lecture: song.lecture || 13,
+    lecture: song.lecture || 0,
     example: song.practiceExample,
     lines: Array.isArray(song.lines)
       ? song.lines.map((line) => {
@@ -213,6 +214,9 @@ function renderPlayer(
   .mvline { position: absolute; left: 0; right: 0; bottom: 6%; text-align: center; padding: 0 16px; text-shadow: 0 1px 4px rgba(0,0,0,.9); pointer-events: none; }
   .mvline b { display: block; font-size: 18px; line-height: 1.35; }
   .mvline p { margin: 4px 0 0; font-size: 15px; line-height: 1.4; color: rgba(255,255,255,.9); }
+  .miss { margin: 8px 0 0; color: #b45309; font-size: 13px; }
+  .lyric { margin: 10px 0 0; }
+  .lyric b { display: block; font-size: 16px; line-height: 1.45; }
 </style>
 </head>
 <body class="${first?.videoUrl ? "mode-mv" : "mode-listen"}">
@@ -260,6 +264,7 @@ const LECTURES = ${JSON.stringify(bank).replace(/</g, "\\u003c")};
 const BOOK = ${JSON.stringify(book).replace(/</g, "\\u003c")};
 const READINGS = ${JSON.stringify(readings).replace(/</g, "\\u003c")};
 const POINT_EXAM = ${JSON.stringify(pointExam).replace(/</g, "\\u003c")};
+const POINTS = ${JSON.stringify(points).replace(/</g, "\\u003c")};
 const MEDIA = ${JSON.stringify(media)};
 const DEEPSEEK_KEY = ${deepseekKey ? `atob(${JSON.stringify(Buffer.from(deepseekKey).toString("base64"))})` : '""'};
 const DEEPSEEK_URL = ${JSON.stringify(deepseekUrl)};
@@ -311,6 +316,7 @@ let examFrom = "";
 let bookFolder = "";
 let bookLec = "";
 let bookOpen = "";
+let focusLine = null;
 let readIndex = 0;
 let readPick = "";
 let readTrans = "";
@@ -322,6 +328,44 @@ function song() { return SONGS[index]; }
 function lines() { return (song() && song().lines) || []; }
 function focusName() {
   return (song() && song().focus) || "";
+}
+function normLine(value) {
+  return String(value || "").toLowerCase().replace(/[“”"'’,.!?…:—–-]/g, "").replace(/[ \\n\\r\\t]+/g, " ").trim();
+}
+function findLineIndexIn(list, lyricLine) {
+  const want = normLine(lyricLine);
+  if (!want || !list || !list.length) return -1;
+  for (let i = 0; i < list.length; i++) {
+    const have = normLine(list[i].text);
+    if (have && (have === want || have.indexOf(want) >= 0 || want.indexOf(have) >= 0)) return i;
+  }
+  return -1;
+}
+function findSongIndex(title) {
+  let found = -1;
+  SONGS.forEach(function (item, i) {
+    if (item.title === title) found = i;
+  });
+  return found;
+}
+function pointsForLecture(no) {
+  return (POINTS || []).filter(function (point) { return Number(point.lecture) === Number(no); });
+}
+function pointsForSong(title) {
+  return (POINTS || []).filter(function (point) { return point.song && point.song === title; });
+}
+function songHomeLecture() {
+  const current = song() || {};
+  if (current.lecture) return Number(current.lecture);
+  const first = pointsForSong(current.title || "")[0];
+  return first && first.songHomeLecture ? Number(first.songHomeLecture) : 0;
+}
+function listenButton(title, lyricLine, label) {
+  const songIndex = findSongIndex(title);
+  if (songIndex < 0) return "";
+  const lineIndex = findLineIndexIn(SONGS[songIndex].lines || [], lyricLine);
+  return '<button class="chip" data-song="' + songIndex + '" data-line="' + lineIndex + '" type="button">' +
+    escapeHtml(label || ("去听《" + title + "》")) + '</button>';
 }
 function studyLines() {
   const tagged = lines().filter(function (line) { return line.cloze && line.cloze.blankWord; });
@@ -427,6 +471,30 @@ function renderListen() {
   highlight();
 }
 function renderGrammar() {
+  const title = (song() && song().title) || "";
+  const attached = pointsForSong(title);
+  if (attached.length) {
+    const cards = attached.map(function (point) {
+      const lineIndex = findLineIndexIn(lines(), point.lyricLine);
+      const hear = lineIndex >= 0
+        ? '<button class="chip" data-hear="' + lineIndex + '" type="button">听这句</button>'
+        : "";
+      const line = point.lyricLine
+        ? '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + '</b><small>' +
+          escapeHtml(point.lyricTranslation || "") + '</small></p>'
+        : "";
+      const why = point.reason ? '<p>' + escapeHtml(point.reason) + '</p>' : "";
+      return '<div class="card"><b>' + escapeHtml(point.oralName) +
+        '</b><p class="small">' + escapeHtml(point.bookName || "") +
+        (point.lecture ? ' · 第' + point.lecture + '讲' : '') +
+        '</p><p>' + escapeHtml(point.say || "") + '</p>' + line + why + hear + '</div>';
+    }).join("");
+    stage.innerHTML = '<div class="card"><b>这首歌里出现的语法</b><p>一种语言现象出现在某句歌词里，就算对应上。这首歌挂了 ' +
+      attached.length + ' 个点，可能来自不同讲。</p></div>' + cards +
+      '<button class="chip" id="open-read" type="button">拿到阅读里看</button> ' +
+      '<button class="chip" id="use-pattern" type="button">我也用这句说说自己的事</button>';
+    return;
+  }
   const pool = studyLines();
   const cards = pool.map(function (line) {
     const spoken = sentenceHtml(line);
@@ -574,7 +642,8 @@ function renderExam() {
   const pack = lecturePack();
   const items = examItems();
   if (!items.length) {
-    stage.innerHTML = '<div class="card">这一讲还没有整理好的题。</div><button class="chip" id="exam-back" type="button">全部知识点</button>';
+    const back = examFrom === "book" ? "返回教材" : examFrom === "song" ? "全部讲" : "全部讲";
+    stage.innerHTML = '<div class="card"><b>第' + (examCat || "") + '讲</b><p>这一讲还没有整理好的题。</p></div><button class="chip" id="exam-back" type="button">' + back + '</button>';
     return;
   }
   if (examIndex >= items.length) examIndex = 0;
@@ -603,7 +672,7 @@ function renderExam() {
     '</b><p>第 ' + (examIndex + 1) + ' / ' + items.length + ' 题</p>' + from + '<p>' +
     escapeHtml(item.stem) + '</p>' + options + revealed +
     (links ? '<p>相关的歌</p>' + links : '') +
-    '<button class="chip" id="exam-back" type="button">' + (examFrom === "book" ? "返回教材" : "全部知识点") + '</button> ' +
+    '<button class="chip" id="exam-back" type="button">' + (examFrom === "book" ? "返回教材" : examFrom === "song" ? "全部讲" : "全部讲") + '</button> ' +
     '<button class="chip" id="exam-prev" type="button">上一题</button> ' +
     '<button class="chip" id="exam-next" type="button">下一题</button></div>';
 }
@@ -617,9 +686,22 @@ function songButtons(titles) {
     return '<button class="chip" data-song="' + found + '" type="button">去听《' + escapeHtml(name) + '》</button>';
   }).join("");
 }
+function lectureInfo(no) {
+  let found = { no: no, title: "", group: "" };
+  (BOOK || []).forEach(function (group) {
+    (group.items || []).forEach(function (lec) {
+      if (String(lec.no) === String(no)) found = { no: lec.no, title: lec.title || "", group: group.group || "" };
+    });
+  });
+  if (!found.title) {
+    const first = pointsForLecture(no)[0];
+    found.title = (first && first.lectureTitle) || "";
+  }
+  return found;
+}
 function renderBook() {
   if (!bookLec) {
-    let html = '<div class="card"><b>教材</b><p>按四十讲排。点一讲，再点里面的一条。</p></div>';
+    let html = '<div class="card"><b>教材</b><p>按四十讲打开。每一讲列出课件上的全部细点。点一条看讲解；有对应歌词的可以去听。</p></div>';
     let lastGroup = "";
     (BOOK || []).forEach(function (group) {
       (group.items || []).forEach(function (lec) {
@@ -628,37 +710,38 @@ function renderBook() {
           html += '<p class="point">' + escapeHtml(group.group) + '</p>';
         }
         const pack = LECTURES[String(lec.no)] || { items: [] };
+        const pts = pointsForLecture(lec.no);
+        const matched = pts.filter(function (point) { return point.song; }).length;
+        const missing = pts.length - matched;
         const hasExam = (pack.items || []).length > 0;
-        const hasSong = (lec.points || []).some(function (point) { return (point.songs || []).length; });
+        let mark = pts.length + " 个点";
+        if (matched) mark += " · " + matched + " 有歌";
+        if (missing) mark += " · " + missing + " 暂无歌词";
+        if (hasExam) mark += " · 有题";
         html += '<button class="line" data-lec="' + lec.no + '" type="button"><b>第' + lec.no + '讲 ' +
-          escapeHtml(lec.title || "") + '</b><small>' + (lec.points || []).length + ' 个点' +
-          (hasExam ? " · 有题" : "") + (hasSong ? " · 有歌" : "") + '</small></button>';
+          escapeHtml(lec.title || "") + '</b><small>' + mark + '</small></button>';
       });
     });
     stage.innerHTML = html;
     return;
   }
-  let lec = null;
-  (BOOK || []).some(function (group) {
-    lec = (group.items || []).find(function (item) { return String(item.no) === String(bookLec); }) || lec;
-    return false;
-  });
-  if (!lec) { bookLec = ""; renderBook(); return; }
+  const lec = lectureInfo(bookLec);
+  const pts = pointsForLecture(bookLec);
+  if (!pts.length && !lec.title) { bookLec = ""; renderBook(); return; }
   if (!bookOpen) {
     let html = '<button class="chip" id="book-up" type="button">全部讲</button>';
-    html += '<div class="card"><b>第' + lec.no + '讲 ' + escapeHtml(lec.title || "") + '</b><p>点一条再看。</p></div>';
-    (lec.points || []).forEach(function (point) {
-      const mark = (point.songs || []).length ? " · 有歌" : "";
-      html += '<button class="line" data-point="' + escapeHtml(point.ref) + '" type="button"><b>' +
-        escapeHtml(point.name) + '</b><small>' + escapeHtml(point.book || "") + mark + '</small></button>';
+    html += '<div class="card"><b>第' + lec.no + '讲 ' + escapeHtml(lec.title || "") +
+      '</b><p>这一讲共 ' + pts.length + ' 个细点。暂无对应歌词的条目也会列在这里。</p></div>';
+    pts.forEach(function (point) {
+      const mark = point.song ? " · " + point.song : " · 暂无对应歌词";
+      html += '<button class="line" data-point="' + escapeHtml(point.id) + '" type="button"><b>' +
+        escapeHtml(point.oralName) + '</b><small>' + escapeHtml(point.bookName || "") + mark + '</small></button>';
     });
     stage.innerHTML = html;
     return;
   }
-  const point = (lec.points || []).find(function (item) { return item.ref === bookOpen; });
+  const point = pts.find(function (item) { return item.id === bookOpen; });
   if (!point) { bookOpen = ""; renderBook(); return; }
-  const songs = songButtons(point.songs || []);
-  const readings = readButtons(point.songs || []);
   const own = POINT_EXAM[point.ref];
   const ownItems = (own && own.items) || [];
   const realN = ownItems.filter(function (item) { return item.kind !== "模拟题"; }).length;
@@ -667,10 +750,27 @@ function renderBook() {
   const exam = examLabel
     ? '<button class="chip" data-point-exam="' + escapeHtml(point.ref) + '" type="button">' + examLabel + '</button>'
     : "";
+  const packItems = (LECTURES[String(point.lecture)] || {}).items || [];
+  const lectureExam = !exam && packItems.length
+    ? '<button class="chip" data-book="' + point.lecture + '" type="button">做第' + point.lecture + '讲的题</button>'
+    : "";
+  let body = '<p>' + escapeHtml(point.say || "") + '</p>';
+  if (point.song && point.lyricLine) {
+    body += '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + '</b><small>' +
+      escapeHtml(point.lyricTranslation || "") + '</small></p>';
+    if (point.reason) body += '<p>' + escapeHtml(point.reason) + '</p>';
+    body += '<p class="small">《' + escapeHtml(point.song) + '》' +
+      (point.artist ? " · " + escapeHtml(point.artist) : "") + '</p>';
+    const go = listenButton(point.song, point.lyricLine, "去听");
+    const readings = readButtons([point.song]);
+    body += go || '<p class="miss">歌名已记下，课表里还没有这首歌。</p>';
+    if (readings) body += '<div class="row">' + readings + '</div>';
+  } else {
+    body += '<p class="miss">暂无对应歌词</p>';
+  }
   stage.innerHTML = '<button class="chip" id="book-up" type="button">返回这一讲</button><div class="card"><b>' +
-    escapeHtml(point.name) + '</b><p class="small">' + escapeHtml(point.book || "") + '</p><p>' +
-    escapeHtml(point.say) + '</p>' + (songs ? '<div class="row">' + songs + '</div>' : '') +
-    (readings ? '<div class="row">' + readings + '</div>' : '') + exam + '</div>';
+    escapeHtml(point.oralName) + '</b><p class="small">' + escapeHtml(point.bookName || "") + '</p>' +
+    body + exam + lectureExam + '</div>';
 }
 function readButtons(titles) {
   return (titles || []).map(function (name) {
@@ -764,8 +864,36 @@ function renderRead() {
     '<button class="chip" id="read-prev" type="button">上一句</button> ' +
     '<button class="chip" id="read-next" type="button">下一句</button></div>';
 }
+function paintHeader() {
+  const title = document.getElementById("title");
+  const point = document.getElementById("point");
+  if (!title || !point) return;
+  if (mode === "book") {
+    title.textContent = "教材";
+    if (bookOpen) {
+      const hit = pointsForLecture(bookLec).find(function (item) { return item.id === bookOpen; });
+      point.textContent = hit ? hit.oralName : ("第" + bookLec + "讲");
+    } else if (bookLec) {
+      point.textContent = "第" + bookLec + "讲 " + (lectureInfo(bookLec).title || "");
+    } else {
+      point.textContent = "按四十讲打开全部细点";
+    }
+    return;
+  }
+  if (mode === "exam") {
+    title.textContent = "专四";
+    const pack = lecturePack();
+    point.textContent = examCat ? ("第" + examCat + "讲 " + (pack.title || "")) : "按这一讲出全部题";
+    return;
+  }
+  const current = song() || {};
+  title.textContent = current.title || "歌曲";
+  const n = pointsForSong(current.title || "").length;
+  point.textContent = n ? (current.focus ? current.focus + " · 共" + n + "个点" : "这首歌里有 " + n + " 个语法点") : (current.focus || "");
+}
 function render() {
   paintTabs();
+  paintHeader();
   const quiet = mode === "exam" || mode === "karaoke" || mode === "read" || mode === "book";
   document.body.className = "mode-" + mode + (quiet ? " quiet" : "");
   if (mode === "grammar") renderGrammar();
@@ -776,10 +904,17 @@ function render() {
   else if (mode === "read") renderRead();
   else if (mode === "mv") renderMv();
   else renderListen();
+  highlight();
 }
 function highlight() {
   if (mode !== "listen" || subtitles === "grammar") return;
-  const lineNo = activeLine();
+  const timed = activeLine();
+  let lineNo = timed;
+  if (focusLine != null && focusLine >= 0) {
+    const locked = lines()[focusLine];
+    if (!hasTime(locked) || audio.paused || timed < 0) lineNo = focusLine;
+    else focusLine = null;
+  }
   if (lineNo === shown) return;
   shown = lineNo;
   stage.querySelectorAll(".line").forEach(function (node, i) { node.classList.toggle("on", i === lineNo); });
@@ -790,8 +925,6 @@ function loadSong(next, autoplay) {
   index = next;
   const current = song();
   if (!current) return;
-  document.getElementById("title").textContent = current.title || "歌曲";
-  document.getElementById("point").textContent = current.focus || "";
   document.getElementById("songs").value = String(index);
   const songIndex = next;
   prepare(current.audioUrl).then(function (src) {
@@ -799,6 +932,7 @@ function loadSong(next, autoplay) {
     audio.src = src || "";
     audio.playbackRate = rate;
     if (autoplay && src) audio.play();
+    else if (src && focusLine != null) playAt(focusLine);
   });
   grammarIndex = 0;
   quizIndex = 0;
@@ -813,17 +947,29 @@ function loadSong(next, autoplay) {
   loopLine = null;
   examIndex = 0;
   examPick = "";
+  shown = -1;
   document.getElementById("loop").classList.remove("on");
   render();
 }
-function playAt(index) {
-  const line = lines()[index];
-  if (!line || line.startTime == null) return;
-  if (loopLine !== null && loopLine !== index) {
+function hasTime(line) {
+  return line && line.startTime != null && isFinite(Number(line.startTime));
+}
+function revealLine(lineIndex) {
+  if (lineIndex == null || lineIndex < 0) return;
+  focusLine = lineIndex;
+  shown = -1;
+  if (mode === "listen") highlight();
+}
+function playAt(lineIndex) {
+  const line = lines()[lineIndex];
+  if (!line) return;
+  revealLine(lineIndex);
+  if (loopLine !== null && loopLine !== lineIndex) {
     loopLine = null;
     const loop = document.getElementById("loop");
     if (loop) loop.classList.remove("on");
   }
+  if (!hasTime(line) || !audio.src) return;
   const seconds = Number(line.startTime) || 0;
   const start = function () {
     const begin = function () { audio.play(); };
@@ -835,6 +981,15 @@ function playAt(index) {
     audio.addEventListener("loadedmetadata", start, { once: true });
     audio.load();
   }
+}
+function goListen(songIndex, lineIndex) {
+  mode = "listen";
+  focusLine = (lineIndex != null && lineIndex >= 0) ? Number(lineIndex) : null;
+  shown = -1;
+  const same = Number(songIndex) === index;
+  if (!same) loadSong(Number(songIndex), false);
+  else render();
+  if (focusLine != null) playAt(focusLine);
 }
 function jump(delta) {
   if (mode === "karaoke") {
@@ -991,6 +1146,7 @@ document.getElementById("songs").innerHTML = SONGS.map(function (item, i) {
 }).join("");
 document.getElementById("songs").onchange = function (event) {
   closeSheet();
+  focusLine = null;
   loadSong(Number(event.target.value), true);
 };
 document.getElementById("more").onclick = function () {
@@ -1030,8 +1186,15 @@ document.querySelectorAll(".nav").forEach(function (nav) {
     if (!button) return;
     mode = button.dataset.mode;
     if (mode === "read") readOpen = false;
-    if (mode === "exam") { examPoint = ""; examCat = ""; examIndex = 0; examPick = ""; examFrom = ""; }
-    shown = -1;
+    if (mode === "exam") {
+      examPoint = "";
+      examCat = String(songHomeLecture() || "");
+      examIndex = 0;
+      examPick = "";
+      examFrom = "song";
+    }
+    if (mode === "book") { /* keep last folder/point */ }
+    if (mode !== "listen" && mode !== "mv") shown = -1;
     closeSheet();
     render();
   };
@@ -1062,7 +1225,13 @@ stage.onclick = function (event) {
     return;
   }
   const hear = event.target.closest("[data-hear]");
-  if (hear) { playAt(Number(hear.dataset.hear)); return; }
+  if (hear) {
+    const lineIndex = Number(hear.dataset.hear);
+    if (mode !== "listen" && mode !== "mv") mode = "listen";
+    if (mode === "listen") render();
+    playAt(lineIndex);
+    return;
+  }
   const line = event.target.closest("[data-i]");
   if (line && line.classList.contains("line") && !event.target.closest("[data-opt]")) {
     playAt(Number(line.dataset.i));
@@ -1146,8 +1315,8 @@ stage.onclick = function (event) {
   const toSong = event.target.closest("[data-song]");
   if (toSong) {
     const next = Number(toSong.dataset.song);
-    mode = SONGS[next] && SONGS[next].videoUrl ? "mv" : "listen";
-    loadSong(next, false);
+    const lineIndex = toSong.dataset.line === undefined || toSong.dataset.line === "" ? -1 : Number(toSong.dataset.line);
+    goListen(next, lineIndex);
     return;
   }
   const examOption = event.target.closest("[data-exam]");
@@ -1223,6 +1392,29 @@ stage.onclick = function (event) {
     return;
   }
   if (event.target.id === "exam-back") {
+    if (examPoint && examFrom === "book") {
+      examPoint = "";
+      examCat = "";
+      examIndex = 0;
+      examPick = "";
+      mode = "book";
+      render();
+      return;
+    }
+    if (examCat && examFrom === "song") {
+      examCat = "";
+      examPoint = "";
+      examIndex = 0;
+      examPick = "";
+      examFrom = "";
+      renderExam();
+      return;
+    }
+    if (examFrom === "song" && !examCat) {
+      mode = "grammar";
+      render();
+      return;
+    }
     examCat = "";
     examPoint = "";
     examIndex = 0;
@@ -1303,7 +1495,7 @@ wait
 `;
 
 export async function packSongs(preview: boolean): Promise<StoredSong[]> {
-  const courses = await readUserCourses();
+  const courses = await loadStudentSongs();
   const packed: StoredSong[] = [];
   const root = preview ? "/" : "";
   for (const course of courses) {
@@ -1348,8 +1540,8 @@ export async function packSongs(preview: boolean): Promise<StoredSong[]> {
       grammarTheme: String(course.grammarTheme || focusPoint(course as unknown as Song)),
       spokenTip: spokenTip(course as unknown as Song),
       coachPrompt: String(course.coachPrompt || ""),
-      lecture: Number(course.lecture) || 13,
-      practiceExample: madeExample(course as unknown as Song),
+      lecture: Number(course.lecture) || 0,
+      practiceExample: course.practice ? madeExample(course as unknown as Song) : undefined,
     });
   }
   return packed;
@@ -1371,11 +1563,12 @@ export async function renderStudentHtml(preview: boolean): Promise<string> {
       }
     }
   }
-  return renderPlayer(songs, await readDeepseekKey(), await readCoachPrompt(), media, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/lectures-exam.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/book-points.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/reading-links.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/point-exam.json"), "utf8")));
+  const points = await loadCoursewarePoints();
+  return renderPlayer(songs, await readDeepseekKey(), await readCoachPrompt(), media, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/lectures-exam.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/book-points.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/reading-links.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/point-exam.json"), "utf8")), points);
 }
 
 export async function buildOfflinePackage(): Promise<{ zip: Buffer; songCount: number }> {
-  const courses = await readUserCourses();
+  const courses = await loadStudentSongs();
   const packed = await packSongs(false);
   const files: Array<{ name: string; data: Buffer }> = [];
 

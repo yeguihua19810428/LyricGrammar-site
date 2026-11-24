@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { previewPathPrefix } from "@/lib/preview-path-prefix";
+import { SignInButtons, SignInGate } from "@/lib/auth/gates";
 
 const loadPhonePage = createServerFn({ method: "POST" }).handler(async () => {
   const { renderStudentHtml } = await import("@/server/offlinePackage");
@@ -58,6 +59,15 @@ function PhonePreview() {
   };
 
   return (
+    <SignInGate
+      fallback={
+        <div className="mx-auto flex min-h-dvh w-full max-w-[390px] flex-col justify-center gap-4 bg-white px-6 text-slate-900">
+          <p className="text-lg font-semibold">登录后才能用学生页</p>
+          <p className="text-sm text-slate-600">这是手机网页，不是单独下载的 App。页面不会公开收录。</p>
+          <SignInButtons />
+        </div>
+      }
+    >
     <div className="min-h-dvh bg-neutral-200 text-slate-900">
       <div className="mx-auto flex w-full max-w-[390px] items-center justify-between gap-2 px-3 py-2">
         <p className="text-xs text-slate-600">中间这一页和手机上一样</p>
@@ -116,5 +126,6 @@ function PhonePreview() {
         )}
       </div>
     </div>
+    </SignInGate>
   );
 }
