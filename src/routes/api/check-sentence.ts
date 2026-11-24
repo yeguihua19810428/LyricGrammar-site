@@ -1,21 +1,54 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { localSentenceFeedback, type SentenceFeedback } from "@/lyric/utils/sentenceCheck";
+import { combineVerdict } from "@/lyric/utils/pointProgress.mjs";
+import { judgeOwnSentence, localSentenceFeedback, type SentenceFeedback } from "@/lyric/utils/sentenceCheck";
 import { readDeepseekKey } from "@/server/deepseekKey";
 
-const FUTURE_TIP =
-  "两件事都是以后才发生的。If 后面那件，却当成现在来说，不加 will。will 只放在后面那句，说你到时会怎么做。";
-const ALREADY_TIP =
-  "别人已经这么说了。嘴里却用 They say，不用 They said。听起来这消息现在还在起作用。";
+type GateResult = {
+  machinePassed: boolean;
+  aiPassed: boolean | null;
+  aiAvailable: boolean;
+  verdict: "pass" | "fail" | "provisional";
+  note: string;
+  followUp: string;
+  frame: string;
+  kind: string;
+  source: "configured-ai" | "local";
+  feedback: SentenceFeedback;
+};
 
-async function askConfiguredModel(input: {
+function clip(value: unknown, max = 400): string {
+  return String(value || "").trim().slice(0, max);
+}
+
+function parseAiJson(text: string): { passed: boolean; note: string; followUp: string; frame: string } | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    if (typeof parsed.passed !== "boolean") return null;
+    return {
+      passed: parsed.passed,
+      note: String(parsed.note || ""),
+      followUp: String(parsed.followUp || ""),
+      frame: String(parsed.frame || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function askPassFail(input: {
   base: string;
   key: string;
   model: string;
   studentSentence: string;
-  formula: string;
-  promptContext: string;
-}): Promise<SentenceFeedback | null> {
+  say: string;
+  lyricLine: string;
+}): Promise<{ passed: boolean; note: string; followUp: string; frame: string } | null> {
   const endpoint = input.base.replace(/\/$/, "") + "/chat/completions";
+  const lines = ["口语提示：" + input.say, "学生写的：" + input.studentSentence];
+  if (input.lyricLine) lines.splice(1, 0, "教学歌词：" + input.lyricLine);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -30,20 +63,16 @@ async function askConfiguredModel(input: {
         {
           role: "system",
           content: [
-            "你在帮中国大学生看一句英文。只用口语，不要用语法术语。",
-            "一首歌只练一件事。",
-            "如果是以后的事：If 后面当现在说，不加 will。will 只放在后面那句。必须是完整句。",
-            "如果是别人已经说过的事：用 They say，不要 They said。",
-            "只返回 JSON，不要markdown：",
-            '{"isCorrect":true,"score":90,"praise":"","grammarAnalysis":"","betterAlternative":"","tips":""}',
-            `以后这件事的提示：${FUTURE_TIP}`,
-            `已经说过这件事的提示：${ALREADY_TIP}`,
+            "你在判断学生有没有用对当前这一条语法现象。只用口语，不要用语法术语。",
+            "只根据口语提示、一句教学歌词（如有）、学生写的那一句来判断。",
+            "不要要求学生复述歌词，要看他是不是用这个办法说自己的事。",
+            "只返回 JSON，不要 markdown：",
+            '{"passed":true,"note":"","followUp":"","frame":""}',
+            "没过时：note 说明哪里不对；followUp 只追问一句；frame 给一个句子架子，让学生填自己的内容，不是选择题。",
+            "过了时：followUp 和 frame 留空，note 用一句话肯定。",
           ].join("\n"),
         },
-        {
-          role: "user",
-          content: `句型：${input.formula}\n情境：${input.promptContext}\n学生写的：${input.studentSentence}`,
-        },
+        { role: "user", content: lines.join("\n") },
       ],
     }),
     signal: AbortSignal.timeout(20000),
@@ -52,18 +81,18 @@ async function askConfiguredModel(input: {
   const data = await response.json();
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== "string") return null;
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  const parsed = JSON.parse(text.slice(start, end + 1));
-  if (typeof parsed.isCorrect !== "boolean") return null;
+  return parseAiJson(text);
+}
+
+function toFeedback(gate: Omit<GateResult, "feedback">, sentence: string): SentenceFeedback {
+  const local = localSentenceFeedback(sentence, gate.note);
   return {
-    isCorrect: parsed.isCorrect,
-    score: Number(parsed.score) || (parsed.isCorrect ? 90 : 70),
-    praise: String(parsed.praise || ""),
-    grammarAnalysis: String(parsed.grammarAnalysis || ""),
-    betterAlternative: String(parsed.betterAlternative || input.studentSentence),
-    tips: String(parsed.tips || ""),
+    ...local,
+    isCorrect: gate.verdict === "pass" || gate.verdict === "provisional",
+    score: gate.verdict === "pass" ? 95 : gate.verdict === "provisional" ? 80 : 60,
+    praise: gate.verdict === "fail" ? "还差一点。" : gate.verdict === "provisional" ? "先记成暂过，有网再核一次。" : "可以，这一条算过了。",
+    grammarAnalysis: gate.note,
+    tips: local.tips,
   };
 }
 
@@ -72,15 +101,72 @@ export const Route = createFileRoute("/api/check-sentence")({
     handlers: {
       POST: async ({ request }) => {
         const body = await request.json().catch(() => ({}));
-        const instruction = String(body.instruction || "").trim();
-        const studentSentence = String(body.studentSentence || "");
-        const promptContext = String(body.promptContext || "");
-        const formula = String(body.formula || "");
+        const studentSentence = clip(body.studentSentence, 500);
+        const oralName = clip(body.oralName, 200);
+        const say = clip(body.say, 400);
+        const lyricLine = clip(body.lyricLine, 240);
+        const formula = clip(body.formula, 200);
+        const promptContext = clip(body.promptContext, 400);
+        const passGate = Boolean(body.passGate) || Boolean(oralName || say || lyricLine);
+        const judged = judgeOwnSentence({
+          studentSentence,
+          oralName: oralName || formula,
+          say: say || promptContext,
+          lyricLine,
+        });
         const savedKey = await readDeepseekKey();
         const base = process.env.CHECK_AI_BASE_URL || (savedKey ? "https://api.deepseek.com/v1" : "");
         const key = process.env.CHECK_AI_API_KEY || savedKey;
         const model = process.env.CHECK_AI_MODEL || "deepseek-flash";
-        if (instruction && base && key && studentSentence.trim()) {
+
+        if (passGate) {
+          let aiPassed: boolean | null = null;
+          let aiAvailable = false;
+          let note = judged.note;
+          let followUp = judged.machinePassed ? "" : judged.note;
+          let frame = judged.frame;
+          let source: "configured-ai" | "local" = "local";
+          if (base && key && studentSentence) {
+            try {
+              const ai = await askPassFail({
+                base,
+                key,
+                model,
+                studentSentence,
+                say: judged.tip || say || promptContext,
+                lyricLine,
+              });
+              if (ai) {
+                aiAvailable = true;
+                aiPassed = ai.passed;
+                source = "configured-ai";
+                if (ai.note) note = ai.note;
+                if (ai.followUp) followUp = ai.followUp;
+                if (ai.frame) frame = ai.frame;
+              }
+            } catch {
+              // Keep the machine result and mark AI unavailable.
+            }
+          }
+          const verdict = combineVerdict(judged.machinePassed, aiPassed, aiAvailable);
+          const gate: Omit<GateResult, "feedback"> = {
+            machinePassed: judged.machinePassed,
+            aiPassed,
+            aiAvailable,
+            verdict,
+            note,
+            followUp,
+            frame,
+            kind: judged.kind,
+            source,
+          };
+          return Response.json({ ...gate, feedback: toFeedback(gate, studentSentence) });
+        }
+
+        // Older callers still send a free-form instruction. Do not use this
+        // path for mastery: the student page now uses passGate above.
+        const instruction = clip(body.instruction, 400);
+        if (instruction && base && key && studentSentence) {
           try {
             const endpoint = base.replace(/\/$/, "") + "/chat/completions";
             const response = await fetch(endpoint, {
@@ -107,23 +193,6 @@ export const Route = createFileRoute("/api/check-sentence")({
             }
           } catch {
             // Fall through to the local note.
-          }
-        }
-        if (base && key && studentSentence.trim()) {
-          try {
-            const feedback = await askConfiguredModel({
-              base,
-              key,
-              model,
-              studentSentence,
-              formula,
-              promptContext,
-            });
-            if (feedback) {
-              return Response.json({ feedback, source: "configured-ai" });
-            }
-          } catch {
-            // The configured model did not answer. Use the local rule.
           }
         }
         return Response.json({

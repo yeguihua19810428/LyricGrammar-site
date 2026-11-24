@@ -14,6 +14,7 @@ import { Route as ApiCheckSentenceRouteImport } from './routes/api/check-sentenc
 import { Route as ApiDeepseekKeyRouteImport } from './routes/api/deepseek-key'
 import { Route as ApiDeleteSongRouteImport } from './routes/api/delete-song'
 import { Route as ApiOfflinePackageRouteImport } from './routes/api/offline-package'
+import { Route as ApiProgressRouteImport } from './routes/api/progress'
 import { Route as ApiSaveSongCourseRouteImport } from './routes/api/save-song-course'
 import { Route as ApiSavedCoursesRouteImport } from './routes/api/saved-courses'
 
@@ -42,6 +43,11 @@ const ApiOfflinePackageRoute = ApiOfflinePackageRouteImport.update({
   path: '/api/offline-package',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiProgressRoute = ApiProgressRouteImport.update({
+  id: '/api/progress',
+  path: '/api/progress',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSaveSongCourseRoute = ApiSaveSongCourseRouteImport.update({
   id: '/api/save-song-course',
   path: '/api/save-song-course',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/api/deepseek-key': typeof ApiDeepseekKeyRoute
   '/api/delete-song': typeof ApiDeleteSongRoute
   '/api/offline-package': typeof ApiOfflinePackageRoute
+  '/api/progress': typeof ApiProgressRoute
   '/api/save-song-course': typeof ApiSaveSongCourseRoute
   '/api/saved-courses': typeof ApiSavedCoursesRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/api/deepseek-key': typeof ApiDeepseekKeyRoute
   '/api/delete-song': typeof ApiDeleteSongRoute
   '/api/offline-package': typeof ApiOfflinePackageRoute
+  '/api/progress': typeof ApiProgressRoute
   '/api/save-song-course': typeof ApiSaveSongCourseRoute
   '/api/saved-courses': typeof ApiSavedCoursesRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/api/deepseek-key': typeof ApiDeepseekKeyRoute
   '/api/delete-song': typeof ApiDeleteSongRoute
   '/api/offline-package': typeof ApiOfflinePackageRoute
+  '/api/progress': typeof ApiProgressRoute
   '/api/save-song-course': typeof ApiSaveSongCourseRoute
   '/api/saved-courses': typeof ApiSavedCoursesRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/api/deepseek-key'
     | '/api/delete-song'
     | '/api/offline-package'
+    | '/api/progress'
     | '/api/save-song-course'
     | '/api/saved-courses'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/api/deepseek-key'
     | '/api/delete-song'
     | '/api/offline-package'
+    | '/api/progress'
     | '/api/save-song-course'
     | '/api/saved-courses'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/api/deepseek-key'
     | '/api/delete-song'
     | '/api/offline-package'
+    | '/api/progress'
     | '/api/save-song-course'
     | '/api/saved-courses'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   ApiDeepseekKeyRoute: typeof ApiDeepseekKeyRoute
   ApiDeleteSongRoute: typeof ApiDeleteSongRoute
   ApiOfflinePackageRoute: typeof ApiOfflinePackageRoute
+  ApiProgressRoute: typeof ApiProgressRoute
   ApiSaveSongCourseRoute: typeof ApiSaveSongCourseRoute
   ApiSavedCoursesRoute: typeof ApiSavedCoursesRoute
 }
@@ -158,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOfflinePackageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/progress': {
+      id: '/api/progress',
+      path: '/api/progress',
+      fullPath: '/api/progress',
+      preLoaderRoute: typeof ApiProgressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/save-song-course': {
       id: '/api/save-song-course'
       path: '/api/save-song-course'
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDeepseekKeyRoute: ApiDeepseekKeyRoute,
   ApiDeleteSongRoute: ApiDeleteSongRoute,
   ApiOfflinePackageRoute: ApiOfflinePackageRoute,
+  ApiProgressRoute: ApiProgressRoute,
   ApiSaveSongCourseRoute: ApiSaveSongCourseRoute,
   ApiSavedCoursesRoute: ApiSavedCoursesRoute,
 }

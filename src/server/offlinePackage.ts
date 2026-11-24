@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { readCoachPrompt, readDeepseekKey } from "@/server/deepseekKey";
@@ -12,6 +13,22 @@ type StoredSong = {
 };
 
 const audioDir = path.join(process.cwd(), "public/audio");
+
+function browserModule(source: string): string {
+  return source.replace(/^export\s+/gm, "");
+}
+
+const PLAYER_LIBS =
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/machineJudge.mjs"), "utf8")) +
+  "\n" +
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/pointProgress.mjs"), "utf8"));
+
+const PLAYER_PASS = readFileSync(path.join(process.cwd(), "src/server/studentPassClient.js"), "utf8");
+
+function injectPlayerScripts(html: string): string {
+  return html.split("/*__PLAYER_LIBS__*/").join(PLAYER_LIBS).split("/*__PLAYER_PASS__*/").join(PLAYER_PASS);
+}
+
 
 const README = `怎么在手机上打开
 ================
@@ -157,7 +174,7 @@ function renderPlayer(
     })
     .join("");
   const deepseekUrl = "https://api.deepseek.com/chat/completions";
-  return `<!DOCTYPE html>
+  return injectPlayerScripts(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
@@ -217,6 +234,20 @@ function renderPlayer(
   .miss { margin: 8px 0 0; color: #b45309; font-size: 13px; }
   .lyric { margin: 10px 0 0; }
   .lyric b { display: block; font-size: 16px; line-height: 1.45; }
+
+  .badge { display: inline-block; margin-left: 8px; font-size: 12px; line-height: 1.4; border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
+  .badge.unseen { background: #f1f5f9; color: #64748b; }
+  .badge.heard { background: #e0f2fe; color: #0369a1; }
+  .badge.practiced { background: #fff7ed; color: #c2410c; }
+  .badge.provisional { background: #fef9c3; color: #a16207; }
+  .badge.mastered { background: #ecfdf5; color: #047857; }
+  .row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .chip.wide { display: block; width: 100%; margin-top: 10px; text-align: center; min-height: 48px; }
+  .verdict { border-radius: 12px; padding: 12px; margin-top: 10px; border: 1px solid #e2e8f0; }
+  .verdict.pass { border-color: #10b981; background: #ecfdf5; }
+  .verdict.fail { border-color: #f43f5e; background: #fff1f2; }
+  .verdict.provisional { border-color: #eab308; background: #fefce8; }
+  .verdict b { display: block; margin-bottom: 4px; }
 </style>
 </head>
 <body class="${first?.videoUrl ? "mode-mv" : "mode-listen"}">
@@ -259,6 +290,7 @@ function renderPlayer(
 </div>
 <audio id="audio" preload="none"></audio>
 <script>
+/*__PLAYER_LIBS__*/
 const SONGS = ${payload};
 const LECTURES = ${JSON.stringify(bank).replace(/</g, "\\u003c")};
 const BOOK = ${JSON.stringify(book).replace(/</g, "\\u003c")};
@@ -1472,10 +1504,11 @@ audio.ontimeupdate = function () {
 };
 audio.onplay = audio.onpause = audio.ontimeupdate;
 if (song()) loadSong(0, false);
+/*__PLAYER_PASS__*/
 </script>
 </body>
 </html>
-`;
+`);
 }
 
 const WINDOWS_OPENER = `@echo off
