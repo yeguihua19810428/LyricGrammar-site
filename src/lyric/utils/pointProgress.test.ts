@@ -74,4 +74,22 @@ describe("point progress status", () => {
     const done = applyProgressEvent(frame, verdictEvent("pass", "p6", "If I am late, I will call you."), 11);
     assert.equal(done.status, "mastered");
   });
+
+  it("a later review-fail marks makeup and does not keep provisional", () => {
+    let rec = applyProgressEvent(emptyRecord("p7"), verdictEvent("provisional", "p7", "If it rains, I will go."), 12);
+    rec = applyProgressEvent(rec, { type: "review-fail", pointId: "p7", sentence: "If it rains, I will go." }, 13);
+    assert.equal(rec.status, "practiced");
+    assert.equal(rec.needsMakeup, true);
+    assert.equal(statusLabel(rec.status, rec), "请补练");
+    rec = applyProgressEvent(rec, verdictEvent("pass", "p7", "If it rains, I will go."), 14);
+    assert.equal(rec.status, "mastered");
+    assert.equal(rec.needsMakeup, false);
+  });
+
+  it("review-fail does not downgrade mastery", () => {
+    let rec = applyProgressEvent(emptyRecord("p8"), { type: "mastered", pointId: "p8", sentence: "ok" }, 15);
+    rec = applyProgressEvent(rec, { type: "review-fail", pointId: "p8", sentence: "ok" }, 16);
+    assert.equal(rec.status, "mastered");
+    assert.equal(rec.needsMakeup, false);
+  });
 });

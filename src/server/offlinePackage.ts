@@ -23,7 +23,9 @@ const PLAYER_LIBS =
   "\n" +
   browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/pointProgress.mjs"), "utf8")) +
   "\n" +
-  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/questMap.mjs"), "utf8"));
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/questMap.mjs"), "utf8")) +
+  "\n" +
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/teachingVoice.mjs"), "utf8"));
 
 const PLAYER_PASS = readFileSync(path.join(process.cwd(), "src/server/studentPassClient.js"), "utf8");
 
@@ -243,6 +245,15 @@ function renderPlayer(
   .badge.practiced { background: #fff7ed; color: #c2410c; }
   .badge.provisional { background: #fef9c3; color: #a16207; }
   .badge.mastered { background: #ecfdf5; color: #047857; }
+  .badge.makeup { background: #fef9c3; color: #a16207; }
+  .voice-hint { margin: 8px 0 0; color: #475569; font-size: 14px; line-height: 1.5; }
+  .song-role { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: #334155; }
+  .song-role .role-tag { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; }
+  .song-role.home .role-tag { background: #ecfdf5; color: #047857; }
+  .song-role.cameo .role-tag { background: #e0f2fe; color: #0369a1; }
+  .stage-item.makeup { border-color: #facc15; background: #fefce8; }
+  .stage-item.side { border-style: dashed; }
+  .track-tag { display: inline-block; margin-right: 6px; font-size: 12px; color: #64748b; }
   .row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .chip.wide { display: block; width: 100%; margin-top: 10px; text-align: center; min-height: 48px; }
   .verdict { border-radius: 12px; padding: 12px; margin-top: 10px; border: 1px solid #e2e8f0; }

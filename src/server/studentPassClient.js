@@ -83,10 +83,102 @@ function markHeard(pointId) {
   if (!pointId) return;
   setProgress(pointId, { type: "heard", pointId: pointId });
 }
-function badgeHtml(status, kind) {
-  var label = kind === "list" ? listBadge(status) : statusLabel(status);
+function badgeHtml(status, kind, record) {
+  var rec = record || null;
+  var label = kind === "list" ? listBadge(status, rec) : statusLabel(status, rec);
   var cls = status || "unseen";
+  if (rec && rec.needsMakeup && status !== "mastered" && status !== "provisional") cls += " makeup";
   return '<span class="badge ' + cls + '">' + escapeHtml(label) + '</span>';
+}
+function pointExplainHtml(point, lectureNo) {
+  var parts = typeof explanationParts === "function"
+    ? explanationParts(point, lectureNo != null ? lectureNo : (point && point.lecture))
+    : { say: (point && point.say) || "", styleHint: "", atypicalNote: "" };
+  var html = "";
+  if (parts.say) html += "<p>" + escapeHtml(parts.say) + "</p>";
+  if (parts.styleHint) html += '<p class="voice-hint">' + escapeHtml(parts.styleHint) + "</p>";
+  if (parts.atypicalNote) html += '<p class="voice-hint">' + escapeHtml(parts.atypicalNote) + "</p>";
+  return html;
+}
+function songRoleHtml(point, lectureNo) {
+  if (typeof songRoleCopy !== "function") return "";
+  var role = songRoleCopy(point, lectureNo != null ? lectureNo : (point && point.lecture));
+  if (!role.role || role.role === "none") return "";
+  return '<p class="song-role ' + role.role + '"><span class="role-tag">' + escapeHtml(role.label) + "</span> " +
+    escapeHtml(role.detail) + "</p>";
+}
+function pointSongLine(point) {
+  if (!point || !point.song || !point.lyricLine) return null;
+  var sidx = findSongIndex(point.song);
+  if (sidx < 0) return null;
+  var list = (SONGS[sidx] && SONGS[sidx].lines) || [];
+  var li = findLineIndexIn(list, point.lyricLine);
+  if (li < 0) return { songIndex: sidx, lineIndex: -1, line: null, next: null };
+  return { songIndex: sidx, lineIndex: li, line: list[li], next: list[li + 1] || null };
+}
+function pointHearButton(point, label) {
+  var info = pointSongLine(point);
+  if (!info || info.lineIndex < 0) return "";
+  if (typeof isCameoPoint === "function" && isCameoPoint(point, point.lecture)) {
+    return '<button class="chip" data-cameo-clip="' + escapeHtml(point.id) + '" data-heard-point="' +
+      escapeHtml(point.id) + '" type="button">' + escapeHtml(label || "听这一小段") + "</button>";
+  }
+  var currentTitle = (typeof song === "function" && song() && song().title) || "";
+  if (findSongIndex(currentTitle) === info.songIndex) {
+    return '<button class="chip" data-hear="' + info.lineIndex + '" data-heard-point="' +
+      escapeHtml(point.id) + '" type="button">' + escapeHtml(label || "听这句") + "</button>";
+  }
+  return '<button class="chip" data-quest-listen-song="' + info.songIndex + '" data-line="' + info.lineIndex +
+    '" data-heard-point="' + escapeHtml(point.id) + '" type="button">' + escapeHtml(label || "听这句") + "</button>";
+}
+var clipAudio = null;
+var clipTimer = 0;
+function stopCameoClip() {
+  if (clipTimer) { clearTimeout(clipTimer); clipTimer = 0; }
+  if (clipAudio) {
+    try { clipAudio.pause(); } catch (error) {}
+  }
+}
+function playCameoClip(point) {
+  var info = pointSongLine(point);
+  if (!info || !info.line) return false;
+  var win = typeof clipWindow === "function"
+    ? clipWindow(info.line.startTime, info.line.endTime, info.next && info.next.startTime)
+    : null;
+  if (!win) return false;
+  stopCameoClip();
+  if (typeof audio !== "undefined" && audio && !audio.paused) {
+    try { audio.pause(); } catch (error) {}
+  }
+  var url = (SONGS[info.songIndex] && SONGS[info.songIndex].audioUrl) || "";
+  if (!url) return false;
+  var startPlay = function (src) {
+    if (!clipAudio) clipAudio = new Audio();
+    clipAudio.src = src;
+    var begin = function () {
+      try { clipAudio.currentTime = win.start; } catch (error) {}
+      var play = clipAudio.play();
+      if (play && play.catch) play.catch(function () {});
+      clipTimer = setTimeout(function () { stopCameoClip(); }, Math.max(300, (win.end - win.start) * 1000));
+    };
+    if (clipAudio.readyState >= 1) begin();
+    else clipAudio.addEventListener("loadedmetadata", begin, { once: true });
+  };
+  if (typeof prepare === "function") prepare(url).then(startPlay);
+  else startPlay(url);
+  return true;
+}
+function lecturePoints(no) {
+  var list = pointsForLecture(no);
+  if (typeof assignMainline !== "function") return list;
+  var song = typeof officialSong === "function" ? officialSong(no, typeof SONGS !== "undefined" ? SONGS : []) : null;
+  return assignMainline(list, no, song && song.title);
+}
+function grammarPointList() {
+  if (questLec) return lecturePoints(questLec);
+  var current = typeof song === "function" ? song() : null;
+  if (current && current.lecture) return lecturePoints(current.lecture);
+  return pointsForSong((current && current.title) || "");
 }
 function pointById(id) {
   if (!id || !POINTS || !POINTS.length) return null;
@@ -139,7 +231,7 @@ function startPractice(pointId) {
     var lec = lectureByNo(lectures, point.lecture);
     var idx = pointIndexInLecture(lec, point.id);
     var unlocked = lecturePassUnlocked(point.lecture, lectures);
-    if (idx >= 0 && !pointPassUnlocked(idx, lec && lec.statuses, unlocked)) {
+    if (idx >= 0 && !pointPassUnlocked(idx, lec && lec.statuses, unlocked, lec && lec.points)) {
       questHint = "先过当前关，才能亮这一关的过关路径。仍可以先听、先看，但不记掌握。";
       questLec = String(point.lecture);
       questPoint = point.id;
@@ -162,7 +254,7 @@ function startPractice(pointId) {
   followDraft = "";
   speechNote = "";
   listeningMic = false;
-  if (point && point.song) {
+  if (point && point.song && !(typeof isCameoPoint === "function" && isCameoPoint(point, point.lecture))) {
     var next = findSongIndex(point.song);
     if (next >= 0 && next !== index) {
       mode = "builder";
@@ -280,7 +372,7 @@ function recheckProvisional() {
         progressMap[row.pointId] = applyProgressEvent(row, verdictEvent("pass", row.pointId, row.lastSentence), Date.now());
       } else if (data && data.aiAvailable && data.verdict === "fail") {
         recheckTried[row.pointId] = true;
-        progressMap[row.pointId] = applyProgressEvent(row, verdictEvent("fail", row.pointId, row.lastSentence), Date.now());
+        progressMap[row.pointId] = applyProgressEvent(row, { type: "review-fail", pointId: row.pointId, sentence: row.lastSentence }, Date.now());
       }
       next(i + 1);
     }).catch(function () { next(i + 1); });
@@ -289,24 +381,23 @@ function recheckProvisional() {
 }
 
 function renderGrammar() {
-  var title = (song() && song().title) || "";
-  var attached = pointsForSong(title);
-  var intro = '<div class="card"><b>这首歌里出现的语法</b><p>看完、听完都不记掌握。每次只过当前这一条。请写成一句你自己的事。</p></div>';
+  var attached = grammarPointList();
+  var introCopy = typeof TEACH_AFTER_LISTEN === "string" ? TEACH_AFTER_LISTEN : "先听这句，再看它为什么这样写。看完、听完都不记掌握。";
+  var intro = '<div class="card"><b>这一讲里出现的语法</b><p>' + escapeHtml(introCopy) + "每次只过当前这一条。请写成一句你自己的事。</p></div>";
   if (attached.length) {
     var cards = attached.map(function (point) {
-      var lineIndex = findLineIndexIn(lines(), point.lyricLine);
-      var hear = lineIndex >= 0
-        ? '<button class="chip" data-hear="' + lineIndex + '" data-heard-point="' + escapeHtml(point.id) + '" type="button">听这句</button>'
-        : "";
+      var rec = getProgress(point.id);
+      var hear = pointHearButton(point);
       var line = point.lyricLine
         ? '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + '</b><small>' +
           escapeHtml(point.lyricTranslation || "") + '</small></p>'
         : '<p class="miss">暂无对应歌词</p>';
-      var why = point.reason ? '<p>' + escapeHtml(point.reason) + '</p>' : "";
+      var why = point.reason ? '<p class="voice-hint">' + escapeHtml(point.reason) + '</p>' : "";
       return '<div class="card"><div class="row-head"><b>' + escapeHtml(point.oralName) +
-        '</b>' + badgeHtml(getProgress(point.id).status) + '</div><p class="small">' + escapeHtml(point.bookName || "") +
+        '</b>' + badgeHtml(rec.status, "", rec) + '</div><p class="small">' + escapeHtml(point.bookName || "") +
         (point.lecture ? ' · 第' + point.lecture + '讲' : '') +
-        '</p><p>' + escapeHtml(point.say || "") + '</p>' + line + why +
+        (point.mainline === false ? ' · 支线' : '') +
+        '</p>' + pointExplainHtml(point) + songRoleHtml(point) + line + why +
         '<div class="row">' + hear +
         '<button class="chip on" data-practice="' + escapeHtml(point.id) + '" type="button">过关：写成自己的</button></div></div>';
     }).join("");
@@ -428,7 +519,7 @@ function renderBook() {
           html += '<p class="point">' + escapeHtml(group.group) + '</p>';
         }
         var pack = LECTURES[String(lec.no)] || { items: [] };
-        var pts = pointsForLecture(lec.no);
+        var pts = lecturePoints(lec.no);
         var matched = pts.filter(function (point) { return point.song; }).length;
         var missing = pts.length - matched;
         var mastered = pts.filter(function (point) { return getProgress(point.id).status === "mastered"; }).length;
@@ -446,17 +537,21 @@ function renderBook() {
     return;
   }
   var lec = lectureInfo(bookLec);
-  var pts = pointsForLecture(bookLec);
+  var pts = lecturePoints(bookLec);
   if (!pts.length && !lec.title) { bookLec = ""; renderBook(); return; }
   if (!bookOpen) {
     var list = '<button class="chip" id="book-up" type="button">全部讲</button>';
     list += '<div class="card"><b>第' + lec.no + '讲 ' + escapeHtml(lec.title || "") +
-      '</b><p>这一讲共 ' + pts.length + ' 个细点。暂无对应歌词的条目也会列在这里。看完不算掌握。</p></div>';
+      '</b><p>这一讲共 ' + pts.length + ' 个细点。暂无对应歌词的条目也会列在这里。看完不算掌握。细点多的讲次，过完主线即可点亮本讲。</p></div>';
     pts.forEach(function (point) {
       var rec = getProgress(point.id);
       var mark = point.song ? " · " + point.song : " · 暂无对应歌词";
+      if (point.mainline === false) mark += " · 支线";
+      else if (pts.length > 10) mark += " · 主线";
+      if (typeof isCameoPoint === "function" && isCameoPoint(point, bookLec)) mark += " · 客串例句";
+      else if (point.song) mark += " · 本家主打歌";
       list += '<button class="line" data-point="' + escapeHtml(point.id) + '" type="button"><b>' +
-        escapeHtml(point.oralName) + '</b><small>' + badgeHtml(rec.status, "list") + " " +
+        escapeHtml(point.oralName) + '</b><small>' + badgeHtml(rec.status, "list", rec) + " " +
         escapeHtml(point.bookName || "") + mark + '</small></button>';
     });
     stage.innerHTML = list;
@@ -476,15 +571,14 @@ function renderBook() {
   var lectureExam = !exam && packItems.length
     ? '<button class="chip" data-book="' + point.lecture + '" type="button">做第' + point.lecture + '讲的题</button>'
     : "";
-  var body = '<p>' + escapeHtml(point.say || "") + '</p>';
+  var body = pointExplainHtml(point) + songRoleHtml(point, bookLec);
   if (point.song && point.lyricLine) {
     body += '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + '</b><small>' +
       escapeHtml(point.lyricTranslation || "") + '</small></p>';
-    if (point.reason) body += '<p>' + escapeHtml(point.reason) + '</p>';
+    if (point.reason) body += '<p class="voice-hint">' + escapeHtml(point.reason) + '</p>';
     body += '<p class="small">《' + escapeHtml(point.song) + '》' +
       (point.artist ? " · " + escapeHtml(point.artist) : "") + '</p>';
-    var go = listenButton(point.song, point.lyricLine, "去听");
-    if (go) go = go.replace('type="button">', 'data-heard-point="' + escapeHtml(point.id) + '" type="button">');
+    var go = pointHearButton(point, typeof isCameoPoint === "function" && isCameoPoint(point, bookLec) ? "听这一小段" : "去听");
     var readings = readButtons([point.song]);
     body += go || '<p class="miss">歌名已记下，课表里还没有这首歌。</p>';
     if (readings) body += '<div class="row">' + readings + '</div>';
@@ -531,7 +625,17 @@ function showVerdict(result, options) {
         '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div>';
     }
   } else if (verdict === "provisional") {
-    extra = "<p>没网或还没有核到 AI。灯先半亮。离线暂过不算正式掌握，有网再核一次才算，还不能解锁下一关。</p>";
+    extra = "<p>没网或还没有核到 AI。灯先半亮。暂过还不是正式掌握，有网后会再核一次。现在可以先去下一关；若复核未过，会把这一关标成请补练。</p>";
+    var currentProv = currentPoint();
+    var lecturesProv = typeof liveQuestLectures === "function" ? liveQuestLectures() : [];
+    var targetProv = typeof nextPassTarget === "function"
+      ? nextPassTarget(lecturesProv, currentProv && currentProv.lecture, currentProv && currentProv.id)
+      : null;
+    if (targetProv && targetProv.pointId) {
+      extra += '<div class="quest-actions"><button class="chip on wide" data-quest-next="' +
+        escapeHtml(targetProv.pointId) + '" data-quest-lec="' + targetProv.lectureNo +
+        '" type="button">去下一关</button></div>';
+    }
     extra += '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
       '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div>';
   } else if (verdict === "fail") {
@@ -794,10 +898,7 @@ function renderPracticeHub(point, attached) {
     ? '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + '</b><small>' +
       escapeHtml(point.lyricTranslation || "") + "</small></p>"
     : '<p class="miss">暂无对应歌词。请用自己的句子来练，不编造歌词。</p>';
-  var lineIndex = pointLineIndex(point);
-  var hear = lineIndex >= 0
-    ? '<button class="chip" data-hear="' + lineIndex + '" data-heard-point="' + escapeHtml(point.id) + '" type="button">再听原句</button>'
-    : "";
+  var hear = pointHearButton(point, typeof isCameoPoint === "function" && isCameoPoint(point, point.lecture) ? "再听这一小段" : "再听原句");
   var more = attached.length > 1
     ? '<button class="chip" id="pick-point" type="button">换一条细点</button>'
     : "";
@@ -808,21 +909,20 @@ function renderPracticeHub(point, attached) {
   if (rec.status === "mastered" && matchingReadings(point).length) {
     tasks += '<button class="chip wide" data-task="read" type="button">到阅读里标出同一现象</button>';
   }
-  stage.innerHTML = '<div class="card"><div class="row-head"><b>过关</b>' + badgeHtml(rec.status) +
+  stage.innerHTML = '<div class="card"><div class="row-head"><b>过关</b>' + badgeHtml(rec.status, "", rec) +
     '</div><p class="small">' + escapeHtml(point.oralName) +
     (point.lecture ? " · 第" + point.lecture + "讲" : "") +
-    "</p><p>" + escapeHtml(point.say || tipText()) + "</p>" + lyric +
-    "<p class=\"hint\">每次只过当前这一条。看完、听完、填空做对都不记掌握。请选一件事来做。</p>" +
+    (point.mainline === false ? " · 支线" : "") +
+    "</p>" + (pointExplainHtml(point) || ("<p>" + escapeHtml(tipText()) + "</p>")) + songRoleHtml(point) + lyric +
+    "<p class=\"hint\">" + escapeHtml(typeof TEACH_AFTER_LISTEN === "string" ? TEACH_AFTER_LISTEN : "先听这句，再看它为什么这样写。") +
+    "每次只过当前这一条。请选一件事来做。写成自己的是主过关。</p>" +
     hear + tasks + more +
     '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
     '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div></div>';
 }
 
 function hearAndFrame(point, rec, kind) {
-  var lineIndex = pointLineIndex(point);
-  var hear = lineIndex >= 0
-    ? '<button class="chip" id="hear-again" data-hear="' + lineIndex + '" data-heard-point="' + escapeHtml(point.id) + '" type="button">再听原句</button>'
-    : "";
+  var hear = pointHearButton(point, typeof isCameoPoint === "function" && isCameoPoint(point, point.lecture) ? "再听这一小段" : "再听原句");
   var frameBlock = "";
   if (rec.failCount >= 2 && !waitingIndependent && rec.status !== "mastered") {
     var frameText = practiceTask === "explain" ? explainFrame(kind) : sentenceFrame(kind);
@@ -861,11 +961,11 @@ function renderOwnTask(point, attached) {
     ? '<button class="chip" id="pick-point" type="button">换一条细点</button>'
     : "";
   stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
-    '<div class="card"><div class="row-head"><b>' + title + "</b>" + badgeHtml(rec.status) +
+    '<div class="card"><div class="row-head"><b>' + title + "</b>" + badgeHtml(rec.status, "", rec) +
     '</div><p class="small">' + escapeHtml(point.oralName) +
     (point.lecture ? " · 第" + point.lecture + "讲" : "") +
-    "</p><p>" + escapeHtml(speaking ? prompt : (point.say || tipText())) + "</p>" + lyric +
-    (speaking ? "<p>" + escapeHtml(point.say || tipText()) + "</p>" : "") +
+    "</p>" + (speaking ? "<p>" + escapeHtml(prompt) + "</p>" : "") +
+    (pointExplainHtml(point) || ("<p>" + escapeHtml(tipText()) + "</p>")) + songRoleHtml(point) + lyric +
     independentNote + mic +
     '<textarea id="sentence" rows="3" placeholder="' + (speaking ? "开口转写会出现在这里，也可以改打字。" : "用这个办法写一句你自己的完整话。") + '">' +
     escapeHtml(passDraft) + "</textarea>" + bits.hear +
@@ -902,8 +1002,9 @@ function renderExplainTask(point) {
   }
   stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
     '<div class="card"><div class="row-head"><b>指出并说明</b>' + badgeHtml(rec.status) +
-    '</div><p class="small">' + escapeHtml(point.oralName) + "</p><p>" +
-    escapeHtml(point.say || tipText()) + "</p>" + independentNote + body + bits.hear +
+    '</div><p class="small">' + escapeHtml(point.oralName) + "</p>" +
+    (pointExplainHtml(point) || ("<p>" + escapeHtml(tipText()) + "</p>")) + songRoleHtml(point) +
+    independentNote + body + bits.hear +
     '<div id="sentence-result"></div></div>' + bits.frameBlock;
 }
 
@@ -921,8 +1022,9 @@ function renderRewriteTask(point) {
     : "";
   stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
     '<div class="card"><div class="row-head"><b>改一句歌词</b>' + badgeHtml(rec.status) +
-    '</div><p class="small">' + escapeHtml(point.oralName) + "</p><p>" +
-    escapeHtml(point.say || tipText()) + '</p><p>只改一两个词，必须保住这个语法现象，然后交上去。也可以先读出来再改字。</p>' +
+    '</div><p class="small">' + escapeHtml(point.oralName) + "</p>" +
+    (pointExplainHtml(point) || ("<p>" + escapeHtml(tipText()) + "</p>")) + songRoleHtml(point) +
+    '<p>只改一两个词，必须保住这个语法现象，然后交上去。也可以先读出来再改字。</p>' +
     '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + "</b><small>" +
     escapeHtml(point.lyricTranslation || "") + "</small></p>" + independentNote +
     '<textarea id="rewrite-text" rows="3" placeholder="只改一两个词，把这个语法留下来。">' +
@@ -956,7 +1058,7 @@ function renderReadMarkTask(point) {
   stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
     '<div class="card"><div class="row-head"><b>阅读里标出同一现象</b>' + badgeHtml(rec.status) +
     '</div><p class="small">' + escapeHtml(point.oralName) + " · " + escapeHtml(item.year || "") +
-    "</p><p>" + escapeHtml(point.say || tipText()) + "</p>" + body +
+    "</p>" + (pointExplainHtml(point) || ("<p>" + escapeHtml(tipText()) + "</p>")) + body +
     '<div id="sentence-result"></div></div>';
 }
 
@@ -1486,7 +1588,7 @@ function renderQuestMap(lectures, hint) {
   var current = currentLectureNo(lectures);
   var earnedCount = earnedBadgeIds(lectures).length;
   var html = lectureClearCardHtml();
-  html += '<p class="map-intro">一讲一大关。点进去可以先听、先看。要亮灯，必须过关。后面的讲看得见，也可以先进去听，但不记掌握。</p>' + hint;
+  html += '<p class="map-intro">一讲一大关。点进去可以先听、先看。要亮灯，必须过关。细点多的讲次，过完主线即可点亮本讲、解锁下一讲；其余是支线。暂过可以先往下走。后面的讲看得见，也可以先进去听，但不记掌握。</p>' + hint;
   html += '<div class="quest-actions"><button class="chip" data-quest-badges="1" type="button">勋章' +
     (earnedCount ? " · " + earnedCount : "") + "</button></div>";
   html += '<div class="map-path">';
@@ -1498,9 +1600,22 @@ function renderQuestMap(lectures, hint) {
     if (questJustUnlocked && Number(lec.no) === Number(questJustUnlocked)) cls += " just-lit";
     var songLine = lec.open ? (lec.songTitle ? ("《" + lec.songTitle + "》") : "") : "暂未开放";
     var mark = lectureLightLabel(light);
-    var mastered = 0;
-    (lec.statuses || []).forEach(function (status) { if (status === "mastered") mastered += 1; });
-    var count = lec.open && lec.points.length ? (mastered + " / " + lec.points.length + " 掌握") : "";
+    var mainTotal = 0, mainMastered = 0, sideTotal = 0, sideMastered = 0;
+    (lec.points || []).forEach(function (point, i) {
+      var status = (lec.statuses || [])[i] || "unseen";
+      if (point && point.mainline === false) {
+        sideTotal += 1;
+        if (status === "mastered") sideMastered += 1;
+      } else {
+        mainTotal += 1;
+        if (status === "mastered") mainMastered += 1;
+      }
+    });
+    var count = "";
+    if (lec.open && lec.points.length) {
+      count = "主线 " + mainMastered + " / " + mainTotal + " 掌握";
+      if (sideTotal) count += " · 支线 " + sideMastered + " / " + sideTotal;
+    }
     html += '<button class="' + cls + '" data-quest-lec="' + lec.no + '" type="button">';
     html += '<span class="lamp" aria-hidden="true"></span>';
     html += "<b>第" + lec.no + "讲 " + escapeHtml(lec.title || "") + "</b>";
@@ -1530,7 +1645,8 @@ function renderQuestLecture(lec, lectures, hint) {
   }
   var unlocked = lecturePassUnlocked(lec.no, lectures);
   html += '<div class="card"><b>' + (lec.songTitle ? ("《" + escapeHtml(lec.songTitle) + "》") : escapeHtml(lec.title || "")) +
-    '</b><p class="map-intro">可以先听这首歌、看讲解。要亮这一关，必须用现有的过关练习。过关路径要按细点依次解锁。</p>';
+    '</b><p class="small"><span class="role-tag">本家主打歌</span></p>' +
+    '<p class="map-intro">可以先听这首本家主打歌，感到口气，再看讲解。客串例句只听一小段，不展开别的歌的世界。要亮这一关，必须用现有的过关练习。细点多的讲次，过完主线即可点亮本讲。</p>';
   var songIndex = lec.songTitle ? findSongIndex(lec.songTitle) : -1;
   if (songIndex >= 0) {
     html += '<div class="quest-actions">';
@@ -1541,17 +1657,24 @@ function renderQuestLecture(lec, lectures, hint) {
   html += "</div>";
   (lec.points || []).forEach(function (item, i) {
     var status = (lec.statuses || [])[i] || "unseen";
-    var passOn = pointPassUnlocked(i, lec.statuses, unlocked);
+    var passOn = pointPassUnlocked(i, lec.statuses, unlocked, lec.points);
+    var rec = getProgress(item.id);
     var cls = "stage-item " + status;
+    if (item.mainline === false) cls += " side";
+    if (rec.needsMakeup) cls += " makeup";
     if (passOn && status !== "mastered") cls += " current";
     if (!passOn && status !== "mastered") cls += " locked";
     var missing = item.song ? "" : "暂无对应歌词 · ";
-    var lockText = passOn ? lectureLightLabel(status === "provisional" ? "provisional" : status) : "先过当前关";
+    var track = item.mainline === false ? "支线 · " : ((lec.points || []).length > 10 ? "主线 · " : "");
+    var role = "";
+    if (typeof isCameoPoint === "function" && isCameoPoint(item, lec.no)) role = "客串例句 · ";
+    else if (item.song) role = "本家主打歌 · ";
+    var lockText = rec.needsMakeup ? "复核未过 · 请补练" : (passOn ? lectureLightLabel(status === "provisional" ? "provisional" : status) : "先过当前关");
     html += '<button class="' + cls + '" data-quest-point="' + escapeHtml(item.id) + '" type="button">';
     html += '<span class="lamp" aria-hidden="true"></span>';
     html += "<b>" + escapeHtml(item.oralName || item.bookName || "细点") + "</b>";
     html += "<small>" + escapeHtml(item.lyricLine || "暂无对应歌词。请用自己的句子来练，不编造歌词。") + "</small>";
-    html += '<span class="mark">' + escapeHtml(missing + lockText) + "</span>";
+    html += '<span class="mark">' + escapeHtml(track + role + missing + lockText) + "</span>";
     html += "</button>";
   });
   stage.innerHTML = html;
@@ -1576,13 +1699,16 @@ function renderQuestStage(lec, pointId, hint) {
     return;
   }
   var unlocked = lecturePassUnlocked(lec.no, lectures);
-  var passOn = pointPassUnlocked(idx, lec.statuses, unlocked);
-  var status = (lec.statuses || [])[idx] || getProgress(point.id).status;
+  var passOn = pointPassUnlocked(idx, lec.statuses, unlocked, lec.points);
+  var rec = getProgress(point.id);
+  var status = (lec.statuses || [])[idx] || rec.status;
   var html = questNavHtml() + hint;
   html += '<div class="card"><div class="row-head"><b>' + escapeHtml(point.oralName || "") + "</b>" +
-    badgeHtml(status) + "</div>";
-  html += '<p class="small">' + escapeHtml(point.bookName || "") + "</p>";
-  html += "<p>" + escapeHtml(point.say || "") + "</p>";
+    badgeHtml(status, "", rec) + "</div>";
+  html += '<p class="small">' + escapeHtml(point.bookName || "") +
+    (point.mainline === false ? " · 支线" : "") + "</p>";
+  html += pointExplainHtml(point) + songRoleHtml(point, lec.no);
+  if (rec.needsMakeup) html += '<p class="lock-note">复核未过，请补练这一关。先不一定挡住后面的关。</p>';
   if (point.lyricLine) {
     html += '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + "</b><small>" +
       escapeHtml(point.lyricTranslation || "") + "</small></p>";
@@ -1590,17 +1716,7 @@ function renderQuestStage(lec, pointId, hint) {
     html += '<p class="miss">暂无对应歌词。请用自己的句子来练，不编造歌词。</p>';
   }
   html += '<div class="quest-actions">';
-  var songIndex = -1;
-  var lineIndex = -1;
-  if (point.song) songIndex = findSongIndex(point.song);
-  if (songIndex < 0 && lec.songTitle) songIndex = findSongIndex(lec.songTitle);
-  if (songIndex >= 0 && point.lyricLine) {
-    lineIndex = findLineIndexIn((SONGS[songIndex] && SONGS[songIndex].lines) || [], point.lyricLine);
-  }
-  if (songIndex >= 0) {
-    html += '<button class="chip on wide" data-quest-listen-song="' + songIndex + '" data-line="' +
-      lineIndex + '" data-heard-point="' + escapeHtml(point.id) + '" type="button">去听这句</button>';
-  }
+  html += pointHearButton(point, typeof isCameoPoint === "function" && isCameoPoint(point, lec.no) ? "听这一小段" : "去听这句");
   if (passOn) {
     html += '<button class="chip on wide" data-practice="' + escapeHtml(point.id) + '" type="button">过关</button>';
   } else {
@@ -1612,6 +1728,13 @@ function renderQuestStage(lec, pointId, hint) {
 }
 
 function handleQuestClick(event) {
+  var cameo = event.target.closest("[data-cameo-clip]");
+  if (cameo) {
+    var clipPoint = pointById(cameo.getAttribute("data-cameo-clip") || "");
+    if (clipPoint) playCameoClip(clipPoint);
+    markHeard(cameo.getAttribute("data-heard-point") || (clipPoint && clipPoint.id) || "");
+    return true;
+  }
   var qnextLec = event.target.closest("[data-quest-next-lec]");
   if (qnextLec) {
     questView = "";

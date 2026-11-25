@@ -18,7 +18,10 @@ export const STATUS_RANK = {
   mastered: 4,
 };
 
-export function statusLabel(status) {
+export function statusLabel(status, record) {
+  if (record && record.needsMakeup && status !== PROGRESS_STATUS.mastered && status !== PROGRESS_STATUS.provisional) {
+    return "请补练";
+  }
   if (status === PROGRESS_STATUS.heard) return "已听";
   if (status === PROGRESS_STATUS.practiced) return "已练未过";
   if (status === PROGRESS_STATUS.provisional) return "暂过";
@@ -26,7 +29,10 @@ export function statusLabel(status) {
   return "未学";
 }
 
-export function listBadge(status) {
+export function listBadge(status, record) {
+  if (record && record.needsMakeup && status !== PROGRESS_STATUS.mastered && status !== PROGRESS_STATUS.provisional) {
+    return "请补练";
+  }
   if (status === PROGRESS_STATUS.mastered) return "掌握";
   if (status === PROGRESS_STATUS.practiced || status === PROGRESS_STATUS.provisional) return "已练";
   if (status === PROGRESS_STATUS.heard) return "已听";
@@ -40,6 +46,7 @@ export function emptyRecord(pointId) {
     failCount: 0,
     lastSentence: "",
     framePassed: false,
+    needsMakeup: false,
     updatedAt: 0,
     dirty: false,
   };
@@ -53,6 +60,10 @@ export function normalizeRecord(row) {
   base.failCount = Math.max(0, Number(row.failCount) || 0);
   base.lastSentence = String(row.lastSentence || "").slice(0, 500);
   base.framePassed = Boolean(row.framePassed);
+  base.needsMakeup = Boolean(row.needsMakeup);
+  if (base.status === PROGRESS_STATUS.mastered || base.status === PROGRESS_STATUS.provisional) {
+    base.needsMakeup = false;
+  }
   base.updatedAt = Number(row.updatedAt) || 0;
   base.dirty = Boolean(row.dirty);
   return base;
@@ -88,6 +99,16 @@ export function applyProgressEvent(current, event, at) {
     bumpTime(record, at);
     return record;
   }
+  if (type === "review-fail") {
+    if (record.status !== PROGRESS_STATUS.mastered) {
+      record.status = PROGRESS_STATUS.practiced;
+      record.needsMakeup = true;
+    }
+    record.failCount += 1;
+    if (sentence) record.lastSentence = sentence;
+    bumpTime(record, at);
+    return record;
+  }
   if (type === "frame-pass") {
     record.framePassed = true;
     if (sentence) record.lastSentence = sentence;
@@ -101,12 +122,14 @@ export function applyProgressEvent(current, event, at) {
     if (record.status !== PROGRESS_STATUS.mastered) {
       record.status = PROGRESS_STATUS.provisional;
     }
+    record.needsMakeup = false;
     if (sentence) record.lastSentence = sentence;
     bumpTime(record, at);
     return record;
   }
   if (type === "mastered") {
     record.status = PROGRESS_STATUS.mastered;
+    record.needsMakeup = false;
     if (sentence) record.lastSentence = sentence;
     bumpTime(record, at);
     return record;
@@ -128,6 +151,10 @@ export function mergeRecords(local, remote) {
   const other = chosen === a ? b : a;
   chosen.failCount = Math.max(a.failCount, b.failCount);
   chosen.framePassed = Boolean(a.framePassed || b.framePassed);
+  chosen.needsMakeup = Boolean(a.needsMakeup || b.needsMakeup);
+  if (chosen.status === PROGRESS_STATUS.mastered || chosen.status === PROGRESS_STATUS.provisional) {
+    chosen.needsMakeup = false;
+  }
   if (!chosen.lastSentence) chosen.lastSentence = other.lastSentence;
   chosen.dirty = Boolean(a.dirty || (rankA > rankB));
   return chosen;

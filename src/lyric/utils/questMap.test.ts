@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CLOSED_LECTURES,
+  MAIN_LINE_SIZE,
+  MAIN_LINE_THRESHOLD,
   allMastered,
+  assignMainline,
   buildLectures,
   currentLectureNo,
   isLectureOpen,
   lectureLight,
   lectureLightLabel,
+  lectureMainlineMastered,
+  lecturePathCleared,
   badgeCatalog,
   earnedBadgeIds,
   findJustClearedLecture,
@@ -20,6 +25,7 @@ import {
   normalizeBadge,
   officialSong,
   pointPassUnlocked,
+  statusClearsPath,
   withStatuses,
 } from "./questMap.mjs";
 
@@ -105,21 +111,25 @@ describe("quest map soft lock between lectures", () => {
     assert.equal(lecturePassUnlocked(2, ready), true);
   });
 
-  it("does not treat provisional as enough to unlock the next lecture", () => {
+  it("lets provisional unlock the next lecture, but does not treat it as a formal clear", () => {
     const lectures = live({ "L1-a": "mastered", "L1-b": "provisional" });
     assert.equal(lectures[0].light, "provisional");
     assert.equal(lectureLightLabel(lectures[0].light), "暂过 · 半亮");
     assert.equal(allMastered(lectures[0].statuses), false);
-    assert.equal(lecturePassUnlocked(2, lectures), false);
+    assert.equal(lectureMainlineMastered(lectures[0]), false);
+    assert.equal(lecturePathCleared(lectures[0]), true);
+    assert.equal(lecturePassUnlocked(2, lectures), true);
+    assert.equal(statusClearsPath("provisional"), true);
+    assert.equal(earnedBadgeIds(lectures).includes("lecture-1"), false);
   });
 });
 
 describe("quest map unlock inside a lecture", () => {
-  it("unlocks the next point only after the current point is mastered", () => {
+  it("unlocks the next point after the current point is mastered or provisional", () => {
     const statuses = ["unseen", "unseen"];
     assert.equal(pointPassUnlocked(0, statuses, true), true);
     assert.equal(pointPassUnlocked(1, statuses, true), false);
-    assert.equal(pointPassUnlocked(1, ["provisional", "unseen"], true), false);
+    assert.equal(pointPassUnlocked(1, ["provisional", "unseen"], true), true);
     assert.equal(pointPassUnlocked(1, ["mastered", "unseen"], true), true);
     assert.equal(pointPassUnlocked(0, statuses, false), false);
   });
@@ -154,6 +164,8 @@ describe("quest map lights", () => {
     assert.equal(currentLectureNo(live({ "L1-a": "mastered" })), 1);
     const mid = live({ "L1-a": "mastered", "L1-b": "mastered" });
     assert.equal(currentLectureNo(mid), 2);
+    const midProv = live({ "L1-a": "mastered", "L1-b": "provisional" });
+    assert.equal(currentLectureNo(midProv), 2);
     const afterTwo = live({
       "L1-a": "mastered",
       "L1-b": "mastered",
@@ -169,6 +181,9 @@ describe("quest map lights", () => {
     const afterFirst = live({ "L1-a": "mastered" });
     const second = nextPassTarget(afterFirst, 1, "L1-a");
     assert.deepEqual(second, { lectureNo: 1, pointId: "L1-b", pointIndex: 1 });
+    const afterProv = live({ "L1-a": "provisional" });
+    const afterProvNext = nextPassTarget(afterProv, 1, "L1-a");
+    assert.deepEqual(afterProvNext, { lectureNo: 1, pointId: "L1-b", pointIndex: 1 });
     const cleared = live({ "L1-a": "mastered", "L1-b": "mastered" });
     const nextLec = nextPassTarget(cleared, 1, "L1-b");
     assert.deepEqual(nextLec, { lectureNo: 2, pointId: "L2-a", pointIndex: 0 });
@@ -213,6 +228,48 @@ describe("real courseware catalog", () => {
       lectures[point.lecture - 1].points.some((item: { id: string }) => item.id === point.id),
     );
     assert.equal(included.length, openNoLyric.length);
+    assert.equal(MAIN_LINE_THRESHOLD, 10);
+    assert.equal(MAIN_LINE_SIZE, 5);
+    const l22 = lectures[21];
+    assert.ok(l22.points.length <= MAIN_LINE_THRESHOLD);
+    assert.equal(l22.points.every((point: { mainline: boolean }) => point.mainline === true), true);
+    const l25 = lectures[24];
+    assert.ok(l25.points.length > MAIN_LINE_THRESHOLD);
+    const main25 = l25.points.filter((point: { mainline: boolean }) => point.mainline);
+    const side25 = l25.points.filter((point: { mainline: boolean }) => !point.mainline);
+    assert.equal(main25.length, MAIN_LINE_SIZE);
+    assert.equal(side25.length, l25.points.length - MAIN_LINE_SIZE);
+    assert.equal(main25.every((point: { song?: string | null; reusedFrom?: string | null; songHomeLecture?: number }) =>
+      Boolean(point.song) && !point.reusedFrom && Number(point.songHomeLecture) === 25
+    ), true);
+    assert.equal(main25.filter((point: { song?: string }) => point.song === "Let Me Down Slowly").length, 3);
+    assert.equal(main25[0].song, "Let Me Down Slowly");
+  });
+});
+
+describe("main-line assignment", () => {
+  it("keeps short lectures entirely on the main line and takes five home-song points on a long one", () => {
+    const short = assignMainline([
+      { id: "a", song: "Home", songHomeLecture: 2, reusedFrom: null },
+      { id: "b", song: null, reusedFrom: null },
+    ], 2);
+    assert.equal(short.every((point: { mainline: boolean }) => point.mainline), true);
+    const long = [];
+    for (let i = 0; i < 12; i++) {
+      long.push({
+        id: "p" + i,
+        song: i < 3 ? "Home" : "Other",
+        songHomeLecture: i < 3 ? 8 : 1,
+        reusedFrom: i < 3 ? null : "第1讲《Other》",
+      });
+    }
+    const marked = assignMainline(long, 8, "Home");
+    const main = marked.filter((point: { mainline: boolean }) => point.mainline);
+    assert.equal(main.length, 5);
+    assert.deepEqual(main.map((point: { id: string }) => point.id), ["p0", "p1", "p2", "p3", "p4"]);
+    assert.equal(marked[3].track, "main");
+    assert.equal(marked[5].track, "side");
+    assert.equal(pointPassUnlocked(5, ["mastered", "mastered", "mastered", "mastered", "mastered", "unseen"], true, marked), true);
   });
 });
 
@@ -229,6 +286,7 @@ describe("lecture clear feedback", () => {
     assert.equal(findJustClearedLecture(after, after), null);
     const copy = lectureClearCopy(cleared, after);
     assert.equal(copy.title, "第1讲通关");
+    assert.match(copy.body, /主线细点都掌握了/);
     assert.match(copy.body, /下一讲已经亮了/);
     assert.equal(copy.nextLectureNo, 2);
     const end = live({ "L37-a": "mastered" });
