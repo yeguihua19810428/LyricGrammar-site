@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { readCoachPrompt, readDeepseekKey } from "@/server/deepseekKey";
 import { loadCoursewarePoints, loadStudentSongs } from "@/server/studentCatalog";
+import { isExplainEditorEnabled, reviewProgress } from "@/server/explainReviews";
 import { focusPoint, madeExample, spokenTip, wholeBlank } from "@/lyric/utils/songFocus";
 import type { Song } from "@/lyric/types";
 
@@ -25,7 +26,9 @@ const PLAYER_LIBS =
   "\n" +
   browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/questMap.mjs"), "utf8")) +
   "\n" +
-  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/teachingVoice.mjs"), "utf8"));
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/teachingVoice.mjs"), "utf8")) +
+  "\n" +
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/explainReviews.mjs"), "utf8"));
 
 const PLAYER_PASS = readFileSync(path.join(process.cwd(), "src/server/studentPassClient.js"), "utf8");
 
@@ -132,6 +135,7 @@ function renderPlayer(
   readings: unknown = {},
   pointExam: unknown = {},
   points: unknown = [],
+  options: { explainEditor?: boolean; reviewStats?: { total: number; revised: number } } = {},
 ): string {
   const slim = songs.map((song) => ({
     title: song.title,
@@ -302,6 +306,16 @@ function renderPlayer(
   .medal small { display: block; margin-top: 4px; color: #64748b; font-size: 13px; }
   @keyframes quest-pop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes lamp-on { 0% { transform: scale(.7); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  .header-actions { display: flex; align-items: flex-start; gap: 8px; }
+  .explain-progress { margin: 6px 0 0; font-size: 13px; color: #0369a1; line-height: 1.4; }
+  .explain-editor { margin-top: 14px; padding: 14px; border: 1px dashed #7dd3fc; border-radius: 16px; background: #f0f9ff; }
+  .explain-editor b { display: block; font-size: 16px; }
+  .explain-editor label { display: block; margin-top: 10px; font-size: 13px; color: #334155; }
+  .explain-editor textarea, .explain-editor input[type="text"] { display: block; width: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font: inherit; background: #fff; }
+  .explain-editor textarea { min-height: 120px; resize: vertical; }
+  .explain-editor .review-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .review-flag { margin: 0 0 8px; font-size: 12px; color: #047857; }
+  .explain-editor .now { margin: 8px 0 0; font-size: 14px; line-height: 1.5; color: #334155; }
   @media (prefers-reduced-motion: reduce) {
     .verdict.pass, .verdict.provisional, .verdict.fail, .verdict.lecture-clear,
     .map-node.just-cleared, .map-node.just-lit, .stage-item.just-cleared,
@@ -314,9 +328,13 @@ function renderPlayer(
 <header>
   <div class="row-head">
     <strong id="title">四十讲关卡</strong>
-    <button class="chip" id="to-map" type="button" hidden>地图</button>
+    <div class="header-actions">
+      <button class="chip" id="toggle-explain-editor" type="button" hidden>改讲解 0/499</button>
+      <button class="chip" id="to-map" type="button" hidden>地图</button>
+    </div>
   </div>
   <p id="point" class="point">过了才亮下一关。先听、先看不记掌握。</p>
+  <p id="explain-progress" class="explain-progress" hidden></p>
 </header>
 <main id="stage">${first?.videoUrl ? '<div class="mv"></div>' : firstLyrics}</main>
 <div class="dock">
@@ -364,6 +382,8 @@ const BOOK = ${JSON.stringify(book).replace(/</g, "\\u003c")};
 const READINGS = ${JSON.stringify(readings).replace(/</g, "\\u003c")};
 const POINT_EXAM = ${JSON.stringify(pointExam).replace(/</g, "\\u003c")};
 const POINTS = ${JSON.stringify(points).replace(/</g, "\\u003c")};
+const EXPLAIN_EDITOR = ${options.explainEditor ? "true" : "false"};
+const REVIEW_STATS = ${JSON.stringify(options.reviewStats || { total: 0, revised: 0 })};
 const MEDIA = ${JSON.stringify(media)};
 const DEEPSEEK_KEY = ${deepseekKey ? `atob(${JSON.stringify(Buffer.from(deepseekKey).toString("base64"))})` : '""'};
 const DEEPSEEK_URL = ${JSON.stringify(deepseekUrl)};
@@ -979,6 +999,7 @@ function paintHeader() {
       title.textContent = "四十讲关卡";
       point.textContent = "过了才亮下一关。先听、先看不记掌握。";
     }
+    if (typeof paintExplainChrome === "function") paintExplainChrome();
     return;
   }
   if (mode === "book") {
@@ -991,18 +1012,21 @@ function paintHeader() {
     } else {
       point.textContent = "按四十讲打开全部细点";
     }
+    if (typeof paintExplainChrome === "function") paintExplainChrome();
     return;
   }
   if (mode === "exam") {
     title.textContent = "专四";
     const pack = lecturePack();
     point.textContent = examCat ? ("第" + examCat + "讲 " + (pack.title || "")) : "按这一讲出全部题";
+    if (typeof paintExplainChrome === "function") paintExplainChrome();
     return;
   }
   const current = song() || {};
   title.textContent = current.title || "歌曲";
   const n = pointsForSong(current.title || "").length;
   point.textContent = n ? (current.focus ? current.focus + " · 共" + n + "个点" : "这首歌里有 " + n + " 个语法点") : (current.focus || "");
+  if (typeof paintExplainChrome === "function") paintExplainChrome();
 }
 function render() {
   paintTabs();
@@ -1688,7 +1712,9 @@ export async function renderStudentHtml(preview: boolean): Promise<string> {
     }
   }
   const points = await loadCoursewarePoints();
-  return renderPlayer(songs, await readDeepseekKey(), await readCoachPrompt(), media, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/lectures-exam.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/book-points.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/readings-40.json"), "utf8")).links, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/point-exam.json"), "utf8")), points);
+  const explainEditor = Boolean(preview && isExplainEditorEnabled());
+  const reviewStats = explainEditor ? await reviewProgress() : { total: 0, revised: 0 };
+  return renderPlayer(songs, await readDeepseekKey(), await readCoachPrompt(), media, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/lectures-exam.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/book-points.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/readings-40.json"), "utf8")).links, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/point-exam.json"), "utf8")), points, { explainEditor, reviewStats });
 }
 
 export async function buildOfflinePackage(): Promise<{ zip: Buffer; songCount: number }> {

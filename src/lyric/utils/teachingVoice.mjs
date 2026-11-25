@@ -103,11 +103,12 @@ export function styleHint(point) {
 
 export function explanationParts(point, lectureNo) {
   var no = lectureNo != null ? lectureNo : (point && point.lecture);
+  var revised = Boolean(point && point.humanRevised);
   return {
     say: String((point && point.say) || ""),
     bookName: String((point && point.bookName) || ""),
-    styleHint: styleHint(point),
-    atypicalNote: atypicalNote(no),
+    styleHint: revised ? "" : styleHint(point),
+    atypicalNote: revised ? "" : atypicalNote(no),
     reason: String((point && point.reason) || ""),
   };
 }

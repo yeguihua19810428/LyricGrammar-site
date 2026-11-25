@@ -21,6 +21,13 @@ var followDraft = "";
 var speechNote = "";
 var listeningMic = false;
 var badgeMap = {};
+var explainEditorOpen = false;
+var explainSayDraft = "";
+var explainBookDraft = "";
+var explainReasonDraft = "";
+var explainBusy = false;
+var explainNote = "";
+var explainForId = "";
 
 function storageKey() {
   return "lyricgrammar-progress-v1:" + (progressAccount || "local");
@@ -95,11 +102,204 @@ function pointExplainHtml(point, lectureNo) {
     ? explanationParts(point, lectureNo != null ? lectureNo : (point && point.lecture))
     : { say: (point && point.say) || "", styleHint: "", atypicalNote: "" };
   var html = "";
+  if (point && point.humanRevised) html += '<p class="review-flag">已人工改写</p>';
   if (parts.say) html += "<p>" + escapeHtml(parts.say) + "</p>";
   if (parts.styleHint) html += '<p class="voice-hint">' + escapeHtml(parts.styleHint) + "</p>";
   if (parts.atypicalNote) html += '<p class="voice-hint">' + escapeHtml(parts.atypicalNote) + "</p>";
   return html;
 }
+function explainEditorOn() {
+  return typeof EXPLAIN_EDITOR !== "undefined" && EXPLAIN_EDITOR;
+}
+function parentSearch() {
+  try {
+    if (parent && parent !== window && parent.location) return String(parent.location.search || "");
+  } catch (error) {}
+  try { return String(location.search || ""); } catch (error) {}
+  return "";
+}
+function bootExplainEditor() {
+  if (!explainEditorOn()) return;
+  if (/(?:\?|&)editExplain=1(?:&|$)/.test(parentSearch())) explainEditorOpen = true;
+}
+function reviewCountText() {
+  var stats = typeof REVIEW_STATS === "object" && REVIEW_STATS ? REVIEW_STATS : { total: 0, revised: 0 };
+  return (Number(stats.revised) || 0) + "/" + (Number(stats.total) || 0);
+}
+function paintExplainChrome() {
+  var btn = document.getElementById("toggle-explain-editor");
+  var bar = document.getElementById("explain-progress");
+  if (!btn) return;
+  if (!explainEditorOn()) {
+    btn.hidden = true;
+    if (bar) bar.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  btn.textContent = (explainEditorOpen ? "收起改讲解 " : "改讲解 ") + reviewCountText();
+  if (explainEditorOpen) btn.classList.add("on");
+  else btn.classList.remove("on");
+  if (bar) {
+    bar.hidden = false;
+    bar.textContent = "人工改写进度 " + reviewCountText() + "。一边试用一边提交，一次只改当前这条。";
+  }
+}
+function currentReviewPoint() {
+  if (practicePointId) return pointById(practicePointId);
+  if (typeof questPoint !== "undefined" && questPoint) return pointById(questPoint);
+  if (typeof bookOpen !== "undefined" && bookOpen) return pointById(bookOpen);
+  return typeof currentPoint === "function" ? currentPoint() : null;
+}
+function captureExplainDrafts() {
+  var sayBox = document.getElementById("review-say");
+  var bookBox = document.getElementById("review-book");
+  var reasonBox = document.getElementById("review-reason");
+  if (sayBox) {
+    explainSayDraft = sayBox.value;
+    explainForId = (currentReviewPoint() && currentReviewPoint().id) || explainForId;
+  }
+  if (bookBox) explainBookDraft = bookBox.value;
+  if (reasonBox) explainReasonDraft = reasonBox.value;
+}
+function resetExplainDrafts() {
+  explainSayDraft = "";
+  explainBookDraft = "";
+  explainReasonDraft = "";
+  explainForId = "";
+}
+function applyReviewLocally(review, stats) {
+  if (!review || !review.id || typeof applyReviewToPoint !== "function") return;
+  for (var i = 0; i < POINTS.length; i++) {
+    if (POINTS[i].id === review.id) {
+      POINTS[i] = applyReviewToPoint(POINTS[i], review);
+      break;
+    }
+  }
+  if (stats && typeof REVIEW_STATS === "object" && REVIEW_STATS) {
+    REVIEW_STATS.revised = stats.revised;
+    REVIEW_STATS.total = stats.total;
+  }
+}
+function goToUnrevised(fromId, note) {
+  var next = typeof nextUnrevisedPoint === "function" ? nextUnrevisedPoint(POINTS, fromId) : null;
+  explainEditorOpen = true;
+  practicePointId = "";
+  practiceTask = "";
+  if (typeof bookOpen !== "undefined") bookOpen = "";
+  if (!next) {
+    explainNote = "499 条都改完了。可以继续试用学生页。";
+    render();
+    return;
+  }
+  resetExplainDrafts();
+  explainNote = note || "已保存。现在是下一条还未改的细点。";
+  questView = "";
+  questLec = String(next.lecture || "");
+  questPoint = next.id;
+  questHint = "";
+  mode = "map";
+  render();
+}
+function toggleExplainEditor() {
+  if (!explainEditorOn()) return;
+  explainEditorOpen = !explainEditorOpen;
+  if (explainEditorOpen && !currentReviewPoint()) {
+    goToUnrevised("", "从第一条还未改的细点开始。一边试用一边提交。");
+    return;
+  }
+  render();
+}
+function explainEditorHtml(point, lectureNo) {
+  if (!explainEditorOn() || !explainEditorOpen || !point) return "";
+  var parts = typeof explanationParts === "function"
+    ? explanationParts(point, lectureNo != null ? lectureNo : point.lecture)
+    : { say: point.say || "", bookName: point.bookName || "", styleHint: "", atypicalNote: "", reason: point.reason || "" };
+  var same = explainForId === point.id;
+  var sayVal = same && explainSayDraft !== "" ? explainSayDraft : String(point.say || "");
+  var bookVal = same ? explainBookDraft : String(point.bookName || "");
+  var reasonVal = same ? explainReasonDraft : String(point.reason || "");
+  if (!same) {
+    bookVal = String(point.bookName || "");
+    reasonVal = String(point.reason || "");
+  }
+  var html = '<section class="explain-editor" id="explain-editor"><div class="row-head"><b>改这一条讲解</b><span class="small">已改 ' +
+    reviewCountText() + "</span></div>";
+  if (point.lyricLine) {
+    html += '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + "</b><small>" +
+      escapeHtml(point.lyricTranslation || "") + "</small></p>";
+  } else {
+    html += '<p class="miss">这条暂无对应歌词。只改讲解，不要编造歌词。</p>';
+  }
+  html += '<p class="now"><b>当前讲解</b>' + escapeHtml(parts.say || "（还没有口语讲解）") + "</p>";
+  if (parts.styleHint) html += '<p class="voice-hint">程序自动提示（提交后会改用人写的，不再叠这段）：' + escapeHtml(parts.styleHint) + "</p>";
+  if (parts.atypicalNote) html += '<p class="voice-hint">课表提示：' + escapeHtml(parts.atypicalNote) + "</p>";
+  if (parts.reason) html += '<p class="now"><b>当前原因</b>' + escapeHtml(parts.reason) + "</p>";
+  if (parts.bookName) html += '<p class="now"><b>当前小字术语</b>' + escapeHtml(parts.bookName) + "</p>";
+  if (point.humanRevised) html += '<p class="review-flag">这条已经改过，还可以再改。</p>';
+  html += '<label>为什么这样写（学生听到的口语）<textarea id="review-say" maxlength="2000">' + escapeHtml(sayVal) + "</textarea></label>";
+  html += '<label>小字术语（可选）<input id="review-book" type="text" maxlength="200" value="' + escapeHtml(bookVal) + '" /></label>';
+  html += '<label>补充原因（可选，小字）<textarea id="review-reason" maxlength="2000">' + escapeHtml(reasonVal) + "</textarea></label>";
+  html += '<p class="hint" id="review-note">' + escapeHtml(explainNote || "只改这一条。提交后立刻写入本机课件，再去下一条未改的。跳过则保留原来的讲解。") + "</p>";
+  html += '<div class="review-actions">';
+  html += '<button class="chip on wide" id="save-explain-review" type="button"' + (explainBusy ? " disabled" : "") + ">保存这一条</button>";
+  html += '<button class="chip wide" id="skip-explain-review" type="button">先跳过，下一条未改的</button>';
+  html += "</div></section>";
+  return html;
+}
+function paintReviewNote() {
+  var note = document.getElementById("review-note");
+  if (note) note.textContent = explainNote || "";
+}
+function saveExplainReview() {
+  if (explainBusy) return;
+  captureExplainDrafts();
+  var sayBox = document.getElementById("review-say");
+  var bookBox = document.getElementById("review-book");
+  var reasonBox = document.getElementById("review-reason");
+  var say = sayBox ? String(sayBox.value || "").trim() : "";
+  var point = currentReviewPoint();
+  if (!point) {
+    explainNote = "请先打开一条细点。";
+    paintReviewNote();
+    return;
+  }
+  if (!say) {
+    explainNote = "请写下这一条的口语讲解，再提交。";
+    paintReviewNote();
+    return;
+  }
+  explainBusy = true;
+  explainNote = "正在保存这一条…";
+  paintReviewNote();
+  fetch("/api/explain-review", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      pointId: point.id,
+      say: say,
+      bookName: bookBox ? bookBox.value : "",
+      reason: reasonBox ? reasonBox.value : "",
+    }),
+  }).then(function (res) {
+    return res.json().then(function (data) { return { ok: res.ok, data: data }; }, function () {
+      return { ok: false, data: { error: "保存失败。" } };
+    });
+  }).then(function (out) {
+    explainBusy = false;
+    if (!out.ok || !out.data || !out.data.success) {
+      explainNote = (out.data && out.data.error) || "保存失败。";
+      render();
+      return;
+    }
+    applyReviewLocally(out.data.review, { total: out.data.total, revised: out.data.revised });
+    goToUnrevised(point.id);
+  }).catch(function () {
+    explainBusy = false;
+    explainNote = "保存失败，请确认本机开发服务器还在跑。";
+    render();
+  });
+}
+
 function songRoleHtml(point, lectureNo) {
   if (typeof songRoleCopy !== "function") return "";
   var role = songRoleCopy(point, lectureNo != null ? lectureNo : (point && point.lecture));
@@ -589,7 +789,7 @@ function renderBook() {
   stage.innerHTML = '<button class="chip" id="book-up" type="button">返回这一讲</button><div class="card"><div class="row-head"><b>' +
     escapeHtml(point.oralName) + '</b>' + badgeHtml(getProgress(point.id).status) +
     '</div><p class="small">' + escapeHtml(point.bookName || "") + '</p>' +
-    body + exam + lectureExam + '</div>';
+    body + exam + lectureExam + '</div>' + explainEditorHtml(point, bookLec);
 }
 
 function showVerdict(result, options) {
@@ -748,6 +948,17 @@ pullProgress();
 
 function handlePassClick(event) {
   if (handleQuestClick(event)) return true;
+  if (event.target.id === "save-explain-review") {
+    saveExplainReview();
+    return true;
+  }
+  if (event.target.id === "skip-explain-review") {
+    captureExplainDrafts();
+    var cur = currentReviewPoint();
+    explainNote = "已跳过，保留原来的讲解。";
+    goToUnrevised(cur && cur.id, "已跳过，保留原来的讲解。现在是下一条还未改的细点。");
+    return true;
+  }
   var practice = event.target.closest("[data-practice]");
   if (practice) {
     startPractice(practice.getAttribute("data-practice") || "");
@@ -890,6 +1101,7 @@ function saveOpenDrafts() {
   if (explainBox) explainDraft = explainBox.value;
   if (rewriteBox) rewriteDraft = rewriteBox.value;
   if (followBox) followDraft = followBox.value;
+  captureExplainDrafts();
 }
 
 function renderPracticeHub(point, attached) {
@@ -918,7 +1130,8 @@ function renderPracticeHub(point, attached) {
     "每次只过当前这一条。请选一件事来做。写成自己的是主过关。</p>" +
     hear + tasks + more +
     '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
-    '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div></div>';
+    '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div></div>' +
+    explainEditorHtml(point);
 }
 
 function hearAndFrame(point, rec, kind) {
@@ -1522,22 +1735,26 @@ function paintQuestHeader() {
   if (questView === "badges") {
     title.textContent = "勋章";
     pointEl.textContent = "过完一讲或一组讲就会记下";
+    paintExplainChrome();
     return;
   }
   if (!questLec) {
     title.textContent = "四十讲关卡";
     pointEl.textContent = "过了才亮下一关。先听、先看不记掌握。";
+    paintExplainChrome();
     return;
   }
   var lec = lectureByNo(liveQuestLectures(), questLec);
   if (!lec) {
     title.textContent = "四十讲关卡";
     pointEl.textContent = "";
+    paintExplainChrome();
     return;
   }
   title.textContent = "第" + lec.no + "讲 " + (lec.title || "");
   if (!lec.open) pointEl.textContent = "暂未开放";
   else pointEl.textContent = lec.songTitle ? ("《" + lec.songTitle + "》") : "先听、先看不记掌握";
+  paintExplainChrome();
 }
 
 function questNavHtml() {
@@ -1724,6 +1941,7 @@ function renderQuestStage(lec, pointId, hint) {
     html += '<p class="lock-note">后面的关看得见，也可以先听、先看，但不记掌握。要亮灯，必须先过当前这一关。</p>';
   }
   html += "</div></div>";
+  html += explainEditorHtml(point, lec.no);
   stage.innerHTML = html;
 }
 
@@ -1904,4 +2122,11 @@ function handlePassClick(event) {
   var heard = event.target.closest("[data-heard-point]");
   if (heard) markHeard(heard.getAttribute("data-heard-point") || "");
   return false;
+}
+
+bootExplainEditor();
+var explainToggle = document.getElementById("toggle-explain-editor");
+if (explainToggle && !explainToggle.getAttribute("data-explain-bound")) {
+  explainToggle.setAttribute("data-explain-bound", "1");
+  explainToggle.onclick = function () { toggleExplainEditor(); };
 }

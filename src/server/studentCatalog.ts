@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { readUserCourses } from "./courseLibrary";
+import { readReviewFile } from "./explainReviews";
+import { mergeReviewsIntoPoints } from "@/lyric/utils/explainReviews.mjs";
 
 const dataDir = path.join(process.cwd(), "src/lyric/data");
 const audioDir = path.join(process.cwd(), "public/audio");
@@ -29,6 +31,8 @@ export type CoursewarePoint = {
   lyricTranslation: string | null;
   reason: string | null;
   songHomeLecture: number | null;
+  humanRevised?: boolean;
+  revisedAt?: string;
 };
 
 function isFlyingWithoutWings(title?: string): boolean {
@@ -45,7 +49,7 @@ async function readJson<T>(name: string, fallback: T): Promise<T> {
 
 export async function loadCoursewarePoints(): Promise<CoursewarePoint[]> {
   const raw = await readJson<{ points?: CoursewarePoint[] }>("courseware-points.json", { points: [] });
-  return (raw.points || []).map((point) => ({
+  const mapped = (raw.points || []).map((point) => ({
     id: String(point.id || ""),
     lecture: Number(point.lecture) || 0,
     lectureTitle: String(point.lectureTitle || ""),
@@ -60,7 +64,11 @@ export async function loadCoursewarePoints(): Promise<CoursewarePoint[]> {
     lyricTranslation: point.lyricTranslation || null,
     reason: point.reason || null,
     songHomeLecture: point.songHomeLecture ?? null,
+    humanRevised: point.humanRevised ? true : undefined,
+    revisedAt: point.revisedAt || undefined,
   }));
+  const reviews = await readReviewFile();
+  return mergeReviewsIntoPoints(mapped, reviews) as CoursewarePoint[];
 }
 
 export async function loadStudentSongs(): Promise<CatalogSong[]> {

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiCheckSentenceRouteImport } from './routes/api/check-sentence'
 import { Route as ApiDeepseekKeyRouteImport } from './routes/api/deepseek-key'
 import { Route as ApiDeleteSongRouteImport } from './routes/api/delete-song'
+import { Route as ApiExplainReviewRouteImport } from './routes/api/explain-review'
 import { Route as ApiOfflinePackageRouteImport } from './routes/api/offline-package'
 import { Route as ApiProgressRouteImport } from './routes/api/progress'
 import { Route as ApiSaveSongCourseRouteImport } from './routes/api/save-song-course'
@@ -36,6 +37,11 @@ const ApiDeepseekKeyRoute = ApiDeepseekKeyRouteImport.update({
 const ApiDeleteSongRoute = ApiDeleteSongRouteImport.update({
   id: '/api/delete-song',
   path: '/api/delete-song',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiExplainReviewRoute = ApiExplainReviewRouteImport.update({
+  id: '/api/explain-review',
+  path: '/api/explain-review',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiOfflinePackageRoute = ApiOfflinePackageRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/api/check-sentence': typeof ApiCheckSentenceRoute
   '/api/deepseek-key': typeof ApiDeepseekKeyRoute
   '/api/delete-song': typeof ApiDeleteSongRoute
+  '/api/explain-review': typeof ApiExplainReviewRoute
   '/api/offline-package': typeof ApiOfflinePackageRoute
   '/api/progress': typeof ApiProgressRoute
   '/api/save-song-course': typeof ApiSaveSongCourseRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/api/check-sentence': typeof ApiCheckSentenceRoute
   '/api/deepseek-key': typeof ApiDeepseekKeyRoute
   '/api/delete-song': typeof ApiDeleteSongRoute
+  '/api/explain-review': typeof ApiExplainReviewRoute
   '/api/offline-package': typeof ApiOfflinePackageRoute
   '/api/progress': typeof ApiProgressRoute
   '/api/save-song-course': typeof ApiSaveSongCourseRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/api/check-sentence': typeof ApiCheckSentenceRoute
   '/api/deepseek-key': typeof ApiDeepseekKeyRoute
   '/api/delete-song': typeof ApiDeleteSongRoute
+  '/api/explain-review': typeof ApiExplainReviewRoute
   '/api/offline-package': typeof ApiOfflinePackageRoute
   '/api/progress': typeof ApiProgressRoute
   '/api/save-song-course': typeof ApiSaveSongCourseRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/api/check-sentence'
     | '/api/deepseek-key'
     | '/api/delete-song'
+    | '/api/explain-review'
     | '/api/offline-package'
     | '/api/progress'
     | '/api/save-song-course'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/api/check-sentence'
     | '/api/deepseek-key'
     | '/api/delete-song'
+    | '/api/explain-review'
     | '/api/offline-package'
     | '/api/progress'
     | '/api/save-song-course'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/api/check-sentence'
     | '/api/deepseek-key'
     | '/api/delete-song'
+    | '/api/explain-review'
     | '/api/offline-package'
     | '/api/progress'
     | '/api/save-song-course'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   ApiCheckSentenceRoute: typeof ApiCheckSentenceRoute
   ApiDeepseekKeyRoute: typeof ApiDeepseekKeyRoute
   ApiDeleteSongRoute: typeof ApiDeleteSongRoute
+  ApiExplainReviewRoute: typeof ApiExplainReviewRoute
   ApiOfflinePackageRoute: typeof ApiOfflinePackageRoute
   ApiProgressRoute: typeof ApiProgressRoute
   ApiSaveSongCourseRoute: typeof ApiSaveSongCourseRoute
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/api/delete-song'
       fullPath: '/api/delete-song'
       preLoaderRoute: typeof ApiDeleteSongRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/explain-review': {
+      id: '/api/explain-review'
+      path: '/api/explain-review'
+      fullPath: '/api/explain-review'
+      preLoaderRoute: typeof ApiExplainReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/offline-package': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCheckSentenceRoute: ApiCheckSentenceRoute,
   ApiDeepseekKeyRoute: ApiDeepseekKeyRoute,
   ApiDeleteSongRoute: ApiDeleteSongRoute,
+  ApiExplainReviewRoute: ApiExplainReviewRoute,
   ApiOfflinePackageRoute: ApiOfflinePackageRoute,
   ApiProgressRoute: ApiProgressRoute,
   ApiSaveSongCourseRoute: ApiSaveSongCourseRoute,
