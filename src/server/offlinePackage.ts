@@ -21,7 +21,9 @@ function browserModule(source: string): string {
 const PLAYER_LIBS =
   browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/machineJudge.mjs"), "utf8")) +
   "\n" +
-  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/pointProgress.mjs"), "utf8"));
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/pointProgress.mjs"), "utf8")) +
+  "\n" +
+  browserModule(readFileSync(path.join(process.cwd(), "src/lyric/utils/questMap.mjs"), "utf8"));
 
 const PLAYER_PASS = readFileSync(path.join(process.cwd(), "src/server/studentPassClient.js"), "utf8");
 
@@ -254,12 +256,38 @@ function renderPlayer(
   .pick-line { font-size: 18px; line-height: 1.8; }
   #speech-note, .hint { color: #64748b; font-size: 14px; }
   .chip.mic { min-height: 56px; font-size: 16px; }
+  header .row-head { align-items: flex-start; }
+  header #to-map { flex: none; min-height: 44px; padding: 8px 14px; }
+  .map-intro { margin: 0 0 12px; font-size: 15px; color: #475569; line-height: 1.45; }
+  .map-path { position: relative; padding: 4px 0 20px; }
+  .map-path:before { content: ""; position: absolute; left: 26px; top: 18px; bottom: 18px; width: 3px; background: #e2e8f0; border-radius: 2px; }
+  .map-node, .stage-item { position: relative; display: block; width: 100%; text-align: left; margin: 0 0 12px; padding: 14px 14px 14px 64px; min-height: 72px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; font: inherit; color: inherit; }
+  .map-node .lamp, .stage-item .lamp { position: absolute; left: 16px; top: 50%; width: 22px; height: 22px; margin-top: -11px; border-radius: 999px; border: 2px solid #cbd5e1; background: #e2e8f0; z-index: 1; }
+  .map-node b, .stage-item b { display: block; font-size: 16px; line-height: 1.35; }
+  .map-node small, .stage-item small { display: block; margin-top: 4px; color: #64748b; font-size: 13px; }
+  .map-node .mark, .stage-item .mark { display: block; margin-top: 4px; font-size: 13px; color: #b45309; }
+  .map-node.unseen, .stage-item.unseen { background: #f8fafc; color: #64748b; }
+  .map-node.heard .lamp, .stage-item.heard .lamp { background: #fff; border-color: #38bdf8; }
+  .map-node.practiced, .stage-item.practiced { border-color: #fdba74; background: #fff7ed; }
+  .map-node.practiced .lamp, .stage-item.practiced .lamp { background: #fdba74; border-color: #f97316; }
+  .map-node.provisional, .stage-item.provisional { border-color: #facc15; background: #fefce8; }
+  .map-node.provisional .lamp, .stage-item.provisional .lamp { background: linear-gradient(90deg, #facc15 50%, #f1f5f9 50%); border-color: #ca8a04; }
+  .map-node.mastered, .stage-item.mastered { border-color: #6ee7b7; background: #ecfdf5; }
+  .map-node.mastered .lamp, .stage-item.mastered .lamp { background: #10b981; border-color: #047857; }
+  .map-node.current, .stage-item.current { box-shadow: 0 0 0 3px #fde68a; border-color: #f59e0b; }
+  .map-node.closed, .stage-item.locked { background: #f8fafc; color: #94a3b8; }
+  .map-node.closed .lamp, .stage-item.locked .lamp { background: #f1f5f9; border-color: #e2e8f0; }
+  .quest-actions .chip { width: 100%; margin-top: 10px; text-align: center; min-height: 48px; }
+  .lock-note { margin: 8px 0 12px; color: #b45309; font-size: 14px; line-height: 1.45; }
 </style>
 </head>
-<body class="${first?.videoUrl ? "mode-mv" : "mode-listen"}">
+<body class="mode-map quiet">
 <header>
-  <strong id="title">${pageTitle}</strong>
-  <p id="point" class="point">${pagePoint}</p>
+  <div class="row-head">
+    <strong id="title">四十讲关卡</strong>
+    <button class="chip" id="to-map" type="button" hidden>地图</button>
+  </div>
+  <p id="point" class="point">过了才亮下一关。先听、先看不记掌握。</p>
 </header>
 <main id="stage">${first?.videoUrl ? '<div class="mv"></div>' : firstLyrics}</main>
 <div class="dock">
@@ -272,6 +300,10 @@ function renderPlayer(
 </div>
 <div id="sheet" class="sheet" hidden>
   <button class="chip" id="sheet-close" type="button">收起</button>
+  <h2>闯关</h2>
+  <nav class="nav">
+    <button type="button" data-mode="map">关卡地图</button>
+  </nav>
   <h2>这一首</h2>
   <nav class="nav">
     <button type="button" data-mode="listen">歌词</button>
@@ -336,7 +368,10 @@ function prepare(url) {
   });
 }
 let index = 0;
-let mode = ${first?.videoUrl ? '"mv"' : '"listen"'};
+let mode = "map";
+let questLec = "";
+let questPoint = "";
+let questHint = "";
 let rate = 1;
 let shown = -1;
 let grammarIndex = 0;
@@ -906,6 +941,14 @@ function paintHeader() {
   const title = document.getElementById("title");
   const point = document.getElementById("point");
   if (!title || !point) return;
+  if (mode === "map") {
+    if (typeof paintQuestHeader === "function") paintQuestHeader();
+    else {
+      title.textContent = "四十讲关卡";
+      point.textContent = "过了才亮下一关。先听、先看不记掌握。";
+    }
+    return;
+  }
   if (mode === "book") {
     title.textContent = "教材";
     if (bookOpen) {
@@ -932,8 +975,17 @@ function paintHeader() {
 function render() {
   paintTabs();
   paintHeader();
-  const quiet = mode === "exam" || mode === "karaoke" || mode === "read" || mode === "book";
+  const quiet = mode === "exam" || mode === "karaoke" || mode === "read" || mode === "book" || mode === "map";
   document.body.className = "mode-" + mode + (quiet ? " quiet" : "");
+  const mapBtn = document.getElementById("to-map");
+  if (mapBtn) {
+    if (mode === "map" && !questLec) mapBtn.setAttribute("hidden", "");
+    else mapBtn.removeAttribute("hidden");
+  }
+  if (mode === "map") {
+    if (typeof renderQuest === "function") renderQuest();
+    return;
+  }
   if (mode === "grammar") renderGrammar();
   else if (mode === "karaoke") renderQuiz();
   else if (mode === "builder") renderBuilder();
@@ -1232,6 +1284,7 @@ document.querySelectorAll(".nav").forEach(function (nav) {
       examFrom = "song";
     }
     if (mode === "book") { /* keep last folder/point */ }
+    if (mode === "map") { questLec = ""; questPoint = ""; questHint = ""; }
     if (mode !== "listen" && mode !== "mv") shown = -1;
     closeSheet();
     render();
@@ -1509,8 +1562,8 @@ audio.ontimeupdate = function () {
   paintSung();
 };
 audio.onplay = audio.onpause = audio.ontimeupdate;
-if (song()) loadSong(0, false);
 /*__PLAYER_PASS__*/
+if (song()) loadSong(0, false);
 </script>
 </body>
 </html>

@@ -105,6 +105,29 @@ function currentPoint() {
 }
 function startPractice(pointId) {
   var point = pointById(pointId);
+  if (point && point.lecture && typeof isLectureOpen === "function") {
+    if (!isLectureOpen(point.lecture)) {
+      questHint = "这一讲暂未开放。还没有合适的歌，不编造歌曲。";
+      questLec = String(point.lecture);
+      questPoint = "";
+      mode = "map";
+      render();
+      return;
+    }
+    var lectures = liveQuestLectures();
+    var lec = lectureByNo(lectures, point.lecture);
+    var idx = pointIndexInLecture(lec, point.id);
+    var unlocked = lecturePassUnlocked(point.lecture, lectures);
+    if (idx >= 0 && !pointPassUnlocked(idx, lec && lec.statuses, unlocked)) {
+      questHint = "先过当前关，才能亮这一关的过关路径。仍可以先听、先看，但不记掌握。";
+      questLec = String(point.lecture);
+      questPoint = point.id;
+      mode = "map";
+      render();
+      return;
+    }
+    if (point.lecture) questLec = String(point.lecture);
+  }
   practicePointId = pointId || "";
   waitingIndependent = Boolean(pointId && getProgress(pointId).framePassed);
   passDraft = "";
@@ -197,7 +220,7 @@ function recheckProvisional() {
     if (i >= pending.length) {
       recheckBusy = false;
       persistProgress();
-      if (mode === "builder" || mode === "book" || mode === "grammar") render();
+      if (mode === "builder" || mode === "book" || mode === "grammar" || mode === "map") render();
       return;
     }
     var row = pending[i];
@@ -442,14 +465,30 @@ function showVerdict(result, options) {
   var box = document.getElementById("sentence-result");
   if (!box) return;
   var verdict = result.verdict || "fail";
-  var title = verdict === "pass" ? "过了，记下掌握" : verdict === "provisional" ? "暂过，还不算正式掌握" : "还没过";
+  var title = verdict === "pass" ? "过了，记下掌握" : verdict === "provisional" ? "暂过，灯先半亮" : "还没过";
   var extra = "";
   if (options && options.frameOnly && (verdict === "pass" || verdict === "provisional")) {
     title = "架子这句可以了";
     extra = "<p>还要再独立写一句，才能记掌握或暂过。</p>";
     verdict = "provisional";
+  } else if (verdict === "pass") {
+    extra = "<p>这一关亮了。</p>";
+    var current = currentPoint();
+    var lectures = typeof liveQuestLectures === "function" ? liveQuestLectures() : [];
+    var target = typeof nextPassTarget === "function"
+      ? nextPassTarget(lectures, current && current.lecture, current && current.id)
+      : null;
+    if (target && target.pointId) {
+      extra += '<div class="quest-actions"><button class="chip on wide" data-quest-next="' +
+        escapeHtml(target.pointId) + '" data-quest-lec="' + target.lectureNo +
+        '" type="button">去下一关</button></div>';
+    }
+    extra += '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
+      '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div>';
   } else if (verdict === "provisional") {
-    extra = "<p>没网或还没有核到 AI。离线暂过不算正式掌握，有网再核一次才算。</p>";
+    extra = "<p>没网或还没有核到 AI。灯先半亮。离线暂过不算正式掌握，有网再核一次才算，还不能解锁下一关。</p>";
+    extra += '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
+      '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div>';
   } else if (verdict === "fail") {
     if (result.followUp) extra += "<p>想一想：" + escapeHtml(result.followUp) + "</p>";
     extra += "<p>请再听原句，改一版再交。</p>";
@@ -554,6 +593,7 @@ if (typeof window !== "undefined") {
 pullProgress();
 
 function handlePassClick(event) {
+  if (handleQuestClick(event)) return true;
   var practice = event.target.closest("[data-practice]");
   if (practice) {
     startPractice(practice.getAttribute("data-practice") || "");
@@ -587,6 +627,18 @@ if (stage && !stage.getAttribute("data-pass-bound")) {
   stage.onclick = function (event) {
     if (handlePassClick(event)) return;
     if (previousClick) previousClick.call(stage, event);
+  };
+}
+var mapHome = document.getElementById("to-map");
+if (mapHome && !mapHome.getAttribute("data-quest-bound")) {
+  mapHome.setAttribute("data-quest-bound", "1");
+  mapHome.onclick = function () {
+    mode = "map";
+    questLec = "";
+    questPoint = "";
+    questHint = "";
+    if (typeof closeSheet === "function") closeSheet();
+    render();
   };
 }
 
@@ -710,7 +762,9 @@ function renderPracticeHub(point, attached) {
     (point.lecture ? " · 第" + point.lecture + "讲" : "") +
     "</p><p>" + escapeHtml(point.say || tipText()) + "</p>" + lyric +
     "<p class=\"hint\">每次只过当前这一条。看完、听完、填空做对都不记掌握。请选一件事来做。</p>" +
-    hear + tasks + more + "</div>";
+    hear + tasks + more +
+    '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
+    '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div></div>';
 }
 
 function hearAndFrame(point, rec, kind) {
@@ -1215,7 +1269,268 @@ function toggleMic() {
   }
 }
 
+
+function liveQuestLectures() {
+  return withStatuses(buildLectures(BOOK, SONGS, POINTS), function (id) {
+    return getProgress(id).status;
+  });
+}
+
+function paintQuestHeader() {
+  var title = document.getElementById("title");
+  var pointEl = document.getElementById("point");
+  if (!title || !pointEl) return;
+  if (!questLec) {
+    title.textContent = "四十讲关卡";
+    pointEl.textContent = "过了才亮下一关。先听、先看不记掌握。";
+    return;
+  }
+  var lec = lectureByNo(liveQuestLectures(), questLec);
+  if (!lec) {
+    title.textContent = "四十讲关卡";
+    pointEl.textContent = "";
+    return;
+  }
+  title.textContent = "第" + lec.no + "讲 " + (lec.title || "");
+  if (!lec.open) pointEl.textContent = "暂未开放";
+  else pointEl.textContent = lec.songTitle ? ("《" + lec.songTitle + "》") : "先听、先看不记掌握";
+}
+
+function questNavHtml() {
+  var html = '<div class="quest-actions">';
+  html += '<button class="chip" id="back-quest-map" type="button">返回地图</button>';
+  if (questPoint) html += '<button class="chip" id="back-quest-lec" type="button">返回这一讲</button>';
+  html += "</div>";
+  return html;
+}
+
+function openQuestLecture(no) {
+  questLec = String(no || "");
+  questPoint = "";
+  questHint = "";
+  mode = "map";
+  var lec = lectureByNo(liveQuestLectures(), questLec);
+  if (lec && lec.songTitle) {
+    var next = findSongIndex(lec.songTitle);
+    if (next >= 0 && next !== index) {
+      keepPractice = true;
+      loadSong(next, false);
+      return;
+    }
+  }
+  render();
+}
+
+function renderQuest() {
+  paintQuestHeader();
+  var lectures = liveQuestLectures();
+  var hint = questHint ? ('<p class="lock-note">' + escapeHtml(questHint) + "</p>") : "";
+  if (questPoint) {
+    renderQuestStage(lectureByNo(lectures, questLec), questPoint, hint);
+    return;
+  }
+  if (questLec) {
+    renderQuestLecture(lectureByNo(lectures, questLec), lectures, hint);
+    return;
+  }
+  renderQuestMap(lectures, hint);
+}
+
+function renderQuestMap(lectures, hint) {
+  var current = currentLectureNo(lectures);
+  var html = '<p class="map-intro">一讲一大关。点进去可以先听、先看。要亮灯，必须过关。后面的讲看得见，也可以先进去听，但不记掌握。</p>' + hint;
+  html += '<div class="map-path">';
+  lectures.forEach(function (lec) {
+    var light = lec.light || "unseen";
+    var cls = "map-node " + light;
+    if (current && Number(lec.no) === current) cls += " current";
+    var songLine = lec.open ? (lec.songTitle ? ("《" + lec.songTitle + "》") : "") : "暂未开放";
+    var mark = lectureLightLabel(light);
+    var mastered = 0;
+    (lec.statuses || []).forEach(function (status) { if (status === "mastered") mastered += 1; });
+    var count = lec.open && lec.points.length ? (mastered + " / " + lec.points.length + " 掌握") : "";
+    html += '<button class="' + cls + '" data-quest-lec="' + lec.no + '" type="button">';
+    html += '<span class="lamp" aria-hidden="true"></span>';
+    html += "<b>第" + lec.no + "讲 " + escapeHtml(lec.title || "") + "</b>";
+    html += "<small>" + escapeHtml(songLine) + "</small>";
+    html += '<span class="mark">' + escapeHtml(mark + (count ? " · " + count : "")) + "</span>";
+    html += "</button>";
+  });
+  html += "</div>";
+  stage.innerHTML = html;
+  var currentNode = stage.querySelector(".map-node.current");
+  if (currentNode && currentNode.scrollIntoView) currentNode.scrollIntoView({ block: "center" });
+}
+
+function renderQuestLecture(lec, lectures, hint) {
+  if (!lec) {
+    questLec = "";
+    renderQuestMap(lectures, hint);
+    return;
+  }
+  var html = questNavHtml() + hint;
+  if (!lec.open) {
+    html += '<div class="card"><b>第' + lec.no + "讲 " + escapeHtml(lec.title || "") +
+      "</b><p>这一讲暂未开放。还没有合适的歌，不编造歌曲。</p></div>";
+    stage.innerHTML = html;
+    return;
+  }
+  var unlocked = lecturePassUnlocked(lec.no, lectures);
+  html += '<div class="card"><b>' + (lec.songTitle ? ("《" + escapeHtml(lec.songTitle) + "》") : escapeHtml(lec.title || "")) +
+    '</b><p class="map-intro">可以先听这首歌、看讲解。要亮这一关，必须用现有的过关练习。过关路径要按细点依次解锁。</p>';
+  var songIndex = lec.songTitle ? findSongIndex(lec.songTitle) : -1;
+  if (songIndex >= 0) {
+    html += '<div class="quest-actions">';
+    html += '<button class="chip on" data-quest-listen-song="' + songIndex + '" type="button">去听这首歌</button>';
+    html += '<button class="chip" data-quest-grammar="' + songIndex + '" type="button">看讲解</button>';
+    html += "</div>";
+  }
+  html += "</div>";
+  (lec.points || []).forEach(function (item, i) {
+    var status = (lec.statuses || [])[i] || "unseen";
+    var passOn = pointPassUnlocked(i, lec.statuses, unlocked);
+    var cls = "stage-item " + status;
+    if (passOn && status !== "mastered") cls += " current";
+    if (!passOn && status !== "mastered") cls += " locked";
+    var missing = item.song ? "" : "暂无对应歌词 · ";
+    var lockText = passOn ? lectureLightLabel(status === "provisional" ? "provisional" : status) : "先过当前关";
+    html += '<button class="' + cls + '" data-quest-point="' + escapeHtml(item.id) + '" type="button">';
+    html += '<span class="lamp" aria-hidden="true"></span>';
+    html += "<b>" + escapeHtml(item.oralName || item.bookName || "细点") + "</b>";
+    html += "<small>" + escapeHtml(item.lyricLine || "暂无对应歌词。请用自己的句子来练，不编造歌词。") + "</small>";
+    html += '<span class="mark">' + escapeHtml(missing + lockText) + "</span>";
+    html += "</button>";
+  });
+  stage.innerHTML = html;
+}
+
+function renderQuestStage(lec, pointId, hint) {
+  var lectures = liveQuestLectures();
+  lec = lectureByNo(lectures, lec && lec.no) || lec;
+  if (!lec) {
+    questPoint = "";
+    renderQuestMap(lectures, hint);
+    return;
+  }
+  var point = null;
+  var idx = -1;
+  (lec.points || []).forEach(function (item, i) {
+    if (item.id === pointId) { point = item; idx = i; }
+  });
+  if (!point) {
+    questPoint = "";
+    renderQuestLecture(lec, lectures, hint);
+    return;
+  }
+  var unlocked = lecturePassUnlocked(lec.no, lectures);
+  var passOn = pointPassUnlocked(idx, lec.statuses, unlocked);
+  var status = (lec.statuses || [])[idx] || getProgress(point.id).status;
+  var html = questNavHtml() + hint;
+  html += '<div class="card"><div class="row-head"><b>' + escapeHtml(point.oralName || "") + "</b>" +
+    badgeHtml(status) + "</div>";
+  html += '<p class="small">' + escapeHtml(point.bookName || "") + "</p>";
+  html += "<p>" + escapeHtml(point.say || "") + "</p>";
+  if (point.lyricLine) {
+    html += '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + "</b><small>" +
+      escapeHtml(point.lyricTranslation || "") + "</small></p>";
+  } else {
+    html += '<p class="miss">暂无对应歌词。请用自己的句子来练，不编造歌词。</p>';
+  }
+  html += '<div class="quest-actions">';
+  var songIndex = -1;
+  var lineIndex = -1;
+  if (point.song) songIndex = findSongIndex(point.song);
+  if (songIndex < 0 && lec.songTitle) songIndex = findSongIndex(lec.songTitle);
+  if (songIndex >= 0 && point.lyricLine) {
+    lineIndex = findLineIndexIn((SONGS[songIndex] && SONGS[songIndex].lines) || [], point.lyricLine);
+  }
+  if (songIndex >= 0) {
+    html += '<button class="chip on wide" data-quest-listen-song="' + songIndex + '" data-line="' +
+      lineIndex + '" data-heard-point="' + escapeHtml(point.id) + '" type="button">去听这句</button>';
+  }
+  if (passOn) {
+    html += '<button class="chip on wide" data-practice="' + escapeHtml(point.id) + '" type="button">过关</button>';
+  } else {
+    html += '<button class="chip wide" data-quest-locked="' + escapeHtml(point.id) + '" type="button">过关（先过当前关）</button>';
+    html += '<p class="lock-note">后面的关看得见，也可以先听、先看，但不记掌握。要亮灯，必须先过当前这一关。</p>';
+  }
+  html += "</div></div>";
+  stage.innerHTML = html;
+}
+
+function handleQuestClick(event) {
+  var qnext = event.target.closest("[data-quest-next]");
+  if (qnext) {
+    questLec = qnext.getAttribute("data-quest-lec") || questLec;
+    questPoint = qnext.getAttribute("data-quest-next") || "";
+    questHint = "";
+    startPractice(questPoint);
+    return true;
+  }
+  var qlec = event.target.closest("[data-quest-lec]");
+  if (qlec) {
+    openQuestLecture(qlec.getAttribute("data-quest-lec"));
+    return true;
+  }
+  var qpoint = event.target.closest("[data-quest-point]");
+  if (qpoint) {
+    questPoint = qpoint.getAttribute("data-quest-point") || "";
+    questHint = "";
+    mode = "map";
+    render();
+    return true;
+  }
+  var qlisten = event.target.closest("[data-quest-listen-song]");
+  if (qlisten) {
+    var sidx = Number(qlisten.getAttribute("data-quest-listen-song"));
+    var line = qlisten.getAttribute("data-line");
+    var lineIndex = (line === null || line === undefined || line === "") ? -1 : Number(line);
+    goListen(sidx, lineIndex);
+    return true;
+  }
+  var qgrammar = event.target.closest("[data-quest-grammar]");
+  if (qgrammar) {
+    var gidx = Number(qgrammar.getAttribute("data-quest-grammar"));
+    if (gidx >= 0 && gidx !== index) {
+      keepPractice = true;
+      mode = "grammar";
+      loadSong(gidx, false);
+    } else {
+      mode = "grammar";
+      render();
+    }
+    return true;
+  }
+  var qlocked = event.target.closest("[data-quest-locked]");
+  if (qlocked) {
+    questHint = "先过当前关，才能亮这一关的过关路径。仍可以先听、先看，但不记掌握。";
+    render();
+    return true;
+  }
+  if (event.target.id === "back-quest-map" || event.target.id === "to-map-main") {
+    mode = "map";
+    questLec = "";
+    questPoint = "";
+    questHint = "";
+    render();
+    return true;
+  }
+  if (event.target.id === "back-quest-lec") {
+    mode = "map";
+    questPoint = "";
+    questHint = "";
+    if (!questLec) {
+      var cur = currentPoint();
+      if (cur && cur.lecture) questLec = String(cur.lecture);
+    }
+    render();
+    return true;
+  }
+  return false;
+}
+
 function handlePassClick(event) {
+  if (handleQuestClick(event)) return true;
   var practice = event.target.closest("[data-practice]");
   if (practice) {
     startPractice(practice.getAttribute("data-practice") || "");
