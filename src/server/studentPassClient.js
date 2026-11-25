@@ -607,7 +607,8 @@ function matchingReadings(point) {
   var pack = (typeof READINGS !== "undefined" && READINGS[title]) || [];
   if (!pack.length) return [];
   var kind = pointKind(point);
-  if (kind === "generic") return [];
+  // 已按同一现象配上的长句，通用细点也进入第 3 期阅读迁移；五种专用机判仍按 kind 筛选。
+  if (kind === "generic") return pack;
   var hits = [];
   for (var i = 0; i < pack.length; i++) {
     var mark = String((pack[i] && pack[i].mark) || "");

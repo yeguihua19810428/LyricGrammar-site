@@ -1603,7 +1603,7 @@ export async function renderStudentHtml(preview: boolean): Promise<string> {
     }
   }
   const points = await loadCoursewarePoints();
-  return renderPlayer(songs, await readDeepseekKey(), await readCoachPrompt(), media, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/lectures-exam.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/book-points.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/reading-links.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/point-exam.json"), "utf8")), points);
+  return renderPlayer(songs, await readDeepseekKey(), await readCoachPrompt(), media, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/lectures-exam.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/book-points.json"), "utf8")), JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/readings-40.json"), "utf8")).links, JSON.parse(await readFile(path.join(process.cwd(), "src/lyric/data/point-exam.json"), "utf8")), points);
 }
 
 export async function buildOfflinePackage(): Promise<{ zip: Buffer; songCount: number }> {

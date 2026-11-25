@@ -1,17 +1,142 @@
 {
-  "note": "只沿用已有五首歌的阅读短文。其余各讲先留「看它在文章里」的接口（空列表），不编造原文。以后能从专四阅读句子库对上再补。",
+  "note": "阅读迁移只使用《专四阅读句子库》/《专四阅读原文》里已有的句子，不编写、不机翻课文。已配上的各讲，都是同一语法现象确实出现在该长句里。原先沿用的五首（Talking to the Moon、Someone Like You、lovely、Blank Space、Count On Me）保持不动。配不上的歌仍留在 noPassageYet，不凑句。",
   "links": {
-    "Unstoppable": [],
+    "Unstoppable": [
+      {
+        "year": "2015年",
+        "text": "A second revelation is that when we expect to be able to find information again later on, we don’t remember it as well as when we think it might become unavailable.",
+        "mark": "unavailable",
+        "ask": "unavailable 是怎么拼起来的？中间是哪个词？",
+        "why": "中间是 available（能够得到），前面加 un，是反过来，合在一起就是得不到了。",
+        "use": "和歌词里 unstoppable 一样，都是前缀、词根再加后缀拼成的派生词。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2017年",
+        "text": "For example, a study in the UK showed that people who write and spell badly are seen as careless, immature and unreliable, and often unintelligent.",
+        "mark": "unreliable",
+        "ask": "unreliable 是怎么拼起来的？",
+        "why": "中间是 rely，前面加 un，后面加 able，合在一起就是靠不住。",
+        "use": "和 unstoppable 同一类：un、词根、able 拼起来。这句话里还有 unintelligent，也是同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "You Are Not Alone": [],
     "Just the Way You Are": [],
-    "Enemy": [],
-    "One More Night": [],
-    "A Thousand Years": [],
-    "Hello My Love": [],
-    "All of Me": [],
-    "In The End": [],
+    "Enemy": [
+      {
+        "year": "2018年",
+        "text": "A second important reason why immigrants have traditionally been drawn to the United States is the belief that everyone has an equal chance to enter a race and succeed in the game.",
+        "mark": "everyone has",
+        "ask": "everyone 看起来像很多人，这里动词用 has，还是 have？",
+        "why": "everyone 后面用 has，不用 have。虽然像是一群人，动词仍按单数。",
+        "use": "和歌词里 Everybody wants 一样：everybody / everyone 后面动词仍用单数。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "One More Night": [
+      {
+        "year": "2015年",
+        "text": "Attachment parents believe that love and comfort are free and necessary.",
+        "mark": "love and comfort are",
+        "ask": "love and comfort 是两样东西并排做主语，后面用 are，还是 is？",
+        "why": "两样东西用 and 并排做主语，后面用 are，不用 is。",
+        "use": "和歌词里 You and I go 一样：两个主体并排，后面的动词按复数。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2016年",
+        "text": "The lawlessness and poverty are only the obvious symptoms.",
+        "mark": "The lawlessness and poverty are",
+        "ask": "lawlessness and poverty 并排做主语，后面用 are，还是 is？",
+        "why": "两样东西并排，后面用 are。",
+        "use": "和 You and I go 同一现象：A and B 做主语，动词用复数。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "A Thousand Years": [
+      {
+        "year": "2011年",
+        "text": "Over the next eight years, Harrington branched out even more: She started her own trucking business, added a cold-storage company, and now has three bakeries producing fresh buns and frozen dough — all now known as the Bun Companies.",
+        "mark": "eight years",
+        "ask": "eight 后面的 year 要不要加 s？",
+        "why": "年数能一个个数，eight 后面要用 years，加 s。",
+        "use": "和歌词里 a thousand years 一样：能数的年，year 要加 s。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2017年",
+        "text": "The aptly-named Fisher, who ran a commercial salvaging operation, had been trying to locate the underwater treasure for over 16 years when he finally hit the jackpot!",
+        "mark": "16 years",
+        "ask": "16 后面的 year 要不要加 s？",
+        "why": "16 年能一个个数，要用 years。",
+        "use": "和 a thousand years 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "Hello My Love": [
+      {
+        "year": "2012年",
+        "text": "No matter how many times you have seen images of the golden mask of boy king Tutankhamen, come face to face with it in Egypt's Cairo museum, and you will suck in your breath.",
+        "mark": "Egypt's Cairo museum",
+        "ask": "埃及的博物馆，这里是怎么表示“谁的”？",
+        "why": "用 Egypt's，先说谁，再加 's，再说那件东西。",
+        "use": "和歌词里 father's eyes / mother's daughter 一样：用 's 表示所属。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2017年",
+        "text": "The counter-argument is that in professional, well-run operations such as Fisher's, each piece is accurately and minutely recorded and that it is this information which is more important than the actual object, and that such operations help increase our wealth of archaeological knowledge.indeed, as in Fisher's case, they make history more accessible to people through museum donations and information on web sites.",
+        "mark": "Fisher's",
+        "ask": "Fisher's 这里表示什么？",
+        "why": "Fisher's 是 Fisher 的（那种打捞做法），用 's 表示所属，后面的名词可以承前省掉。",
+        "use": "和 father's / mother's 一样，都是用 's 表示谁的东西。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "All of Me": [
+      {
+        "year": "2017年",
+        "text": "This, as all of Ireland knows, they hide at the end of the rainbow.",
+        "mark": "all of Ireland",
+        "ask": "说“整个爱尔兰都知道”，这里用的是哪一种 all？",
+        "why": "用 all of，再接 Ireland。",
+        "use": "和歌词里 all of me / all of you 一样：说全部时用 all of。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "In The End": [
+      {
+        "year": "2017年",
+        "text": "This true story seems like a modern-day fairytale: a man pursues his dream through hardship and in the end, he triumphs over the difficulties—they all live happily ever after, right?",
+        "mark": "in the end",
+        "ask": "说到结局，这里 end 前面有没有 the？",
+        "why": "用 in the end。结局就一份，前面加 the。",
+        "use": "和歌词里 in the end 一样：就一份的结局，end 前面加 the。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "2002": [],
-    "Love Yourself": [],
+    "Love Yourself": [
+      {
+        "year": "2018年",
+        "text": "There would be no one to live for during those coming years; she would live for herself.",
+        "mark": "for herself",
+        "ask": "她要为谁而活？这里为什么用 herself，不用 her？",
+        "why": "动作回到她自己身上，用 herself。",
+        "use": "和歌词里 love yourself 一样：动作回到自己身上，用反身代词。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2010年",
+        "text": "Since they believe themselves to be descended from that ancestor, it would be like eating that ancestor or eating themselves.",
+        "mark": "believe themselves",
+        "ask": "believe 后面为什么用 themselves，不用 them？",
+        "why": "他们信的是自己，动作回到自己身上，用 themselves。",
+        "use": "和 love yourself 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "Wake Me Up": [],
     "Talking to the Moon": [
       {
@@ -78,10 +203,58 @@
       }
     ],
     "See You Again": [],
-    "Nothing's Going to Change My Love For You": [],
+    "Nothing's Going to Change My Love For You": [
+      {
+        "year": "2009年",
+        "text": "Probably thousands of people have already been using it, but I just discovered it, so I'm going to claim it and also name it: Fake Foning.",
+        "mark": "I'm going to",
+        "ask": "以后要去做这件事，这里用的是哪一种说法？",
+        "why": "用 be going to：I'm going to claim it。",
+        "use": "和歌词里 gonna / be going to 一样：以后也不会变、以后要发生，用 be going to。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2014年",
+        "text": "He would rather be a plumber's mate and do a real job that requires doing than learn about hydrostatics sitting at a desk, without understanding what practical use they are going to be.",
+        "mark": "are going to",
+        "ask": "以后会有什么用，这里用的是哪一种说法？",
+        "why": "用 are going to be，表示以后。",
+        "use": "和 gonna / be going to 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "Believer": [],
-    "If I Were a Boy": [],
-    "Stay": [],
+    "If I Were a Boy": [
+      {
+        "year": "2009年",
+        "text": "Suppose I were to comment on the beautiful weather we've been having when there was a monsoon at the other end of the phone?",
+        "mark": "Suppose I were",
+        "ask": "现在并不是那种情况，这里 If/Suppose 后面用 were，还是 was？",
+        "why": "现在并不是，Suppose 后面用 were，表示假设。",
+        "use": "和歌词里 If I were a boy 一样：现在不是那样，If / Suppose 后面用 were。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "Stay": [
+      {
+        "year": "2011年",
+        "text": "Cordia Harrington doesn't have to stand on her feet all day anymore.",
+        "mark": "have to",
+        "ask": "说有没有必要整天站着，这里用的是哪一种说法？",
+        "why": "用 have to 表示必须或有必要做的事；这里是 doesn't have to，就是不必再这样做。",
+        "use": "和歌词里 All you have to do is stay 一样：用 have to 来说要做（或不必做）的那件事。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2017年",
+        "text": "Now, although Leprechauns are interesting characters, I have to admit that I was more interested in the stories of their treasure hoard.",
+        "mark": "have to admit",
+        "ask": "“我不得不承认”，这里用的是哪一种说法？",
+        "why": "用 have to，表示这件事得说出来。",
+        "use": "和 have to 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "Hello": [],
     "Someone Like You": [
       {
@@ -147,7 +320,26 @@
         "use": "前面在说关节要受多大的力、坏了以后怎么办。to solve 说的是医生和工程师要一起做的这件事本身，不是已经做完。"
       }
     ],
-    "Apologize": [],
+    "Apologize": [
+      {
+        "year": "2019年",
+        "text": "Still, according to Mar, it's too early to tell people to trade in their Danielle Steel for Alice Munro, at least if the goal is boosting empathy.",
+        "mark": "too early to",
+        "ask": "还太早、还不能去做，这里用的是哪一种架子？",
+        "why": "用 too ... to：too early to tell，太早了，还没法去告诉别人。",
+        "use": "和歌词里 too late to apologize 一样：too + 形容词 + to，表示已经到那种程度，没法再做后面那件事。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2016年",
+        "text": "But we also don't want to subsidize the indolence of people who are too lazy to work.",
+        "mark": "too lazy to",
+        "ask": "懒到不去工作，这里用的是哪一种架子？",
+        "why": "用 too lazy to work：太懒了，不会去工作。",
+        "use": "和 too late to apologize 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "lovely": [
       {
         "year": "2011年",
@@ -276,15 +468,83 @@
         "use": "这一段在讲科学家什么样：说法必须已经落在现有最完整的证据上，他才接受。based 要读成已经是那样，不是正在去建立。"
       }
     ],
-    "Perfect": [],
+    "Perfect": [
+      {
+        "year": "2015年",
+        "text": "He'd just had a hip operation and looked terrible.",
+        "mark": "looked terrible",
+        "ask": "说他当时看上去怎样，这里用的是 look 加什么？",
+        "why": "用 looked 再加形容词 terrible，直接说看上去的样子。",
+        "use": "和歌词里 look perfect 一样：用 look + 形容词说某个人怎样。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2016年",
+        "text": "But every time I made a move to get it some passing eye detected my purpose, and of course I straightened up then, and looked indifferent and pretended that I hadn’t been thinking about the pear at all.",
+        "mark": "looked indifferent",
+        "ask": "说自己看上去怎样，这里用的是 look 加什么？",
+        "why": "用 looked indifferent，后面直接跟形容词。",
+        "use": "和 look perfect 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "Let Me Down Slowly": [],
     "Stronger": [],
-    "Shape of You": [],
-    "Let It Go": [],
-    "Rolling in the Deep": [],
+    "Shape of You": [
+      {
+        "year": "2023年A卷",
+        "text": "He first fell in love with wildlife photography in the sweltering savannas of Tanzania,Africa.",
+        "mark": "in love with",
+        "ask": "说爱上某样东西，这里介词用的是哪个？能丢掉吗？",
+        "why": "用 in love with，with 不能丢。",
+        "use": "和歌词里 in love with the shape of you 一样：爱上要用 in love with，with 要留下来。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "Let It Go": [
+      {
+        "year": "2009年",
+        "text": "An hour later, he called to let me know it was ready.",
+        "mark": "let me know",
+        "ask": "让我知道这件事，let 后面的动词是怎么用的？",
+        "why": "用 let me know：let 后面直接跟原形动词 know，不加 to。",
+        "use": "和歌词里 Let it go 一样：叫人或让人做，用 Let + 人/物 + 最简单的那个动词。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "Rolling in the Deep": [
+      {
+        "year": "2015年",
+        "text": "And then there is the researchers’ final observation: the expectation that we'll be able to locate information down the line leads us to form a memory not of the fact itself but of where we'll be able to find it.",
+        "mark": "there is",
+        "ask": "先把这件事引出来，这里用的是哪一种开头？",
+        "why": "用 there is，先说有这么一项观察。",
+        "use": "和歌词里 There's a fire 一样：先说有没有，用 There is / There's。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2012年",
+        "text": "For those fresh out of university, desperate for work but unable to get it, there is a big imbalance The latest unemployment figures show that 746,000 of 18-24 year-olds are unemployed— a record rate of 18 per cent.",
+        "mark": "there is a big imbalance",
+        "ask": "先说有一种不平衡，这里用的是哪一种开头？",
+        "why": "用 there is a big imbalance。",
+        "use": "和 There's a fire 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "Dream It Possible": [],
     "With or Without You": [],
-    "Try Everything": [],
+    "Try Everything": [
+      {
+        "year": "2011年",
+        "text": "When McDonald’s decided it wanted a new bun supplier, Harrington became determined to win the contract, even though she had no experience running a bakery.",
+        "mark": "even though",
+        "ask": "即便没有经验还是要去争，这里用的是哪一种连接？",
+        "why": "用 even though，后面跟完整的一句：she had no experience running a bakery。",
+        "use": "和歌词里 even though I could fail 一样：即使怎样，还是要做，even though 后面是一句完整的话。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
     "Count On Me": [
       {
         "year": "2017年",
@@ -349,43 +609,98 @@
         "use": "前面在讲压力已经进了身体。这一句接着说：要是一直不管，以后身体里还会发生什么。is left 当现在说，后面 can occur 才是以后的事。"
       }
     ],
-    "You Belong With Me": [],
-    "Love Story": [],
-    "Yellow": [],
-    "I'm Not The Only One": []
+    "You Belong With Me": [
+      {
+        "year": "2017年",
+        "text": "My mother was amazed because the woman who lived next door always wrote a list of what she needed before she went to the supermarket.",
+        "mark": "the woman who",
+        "ask": "是哪一个女人？这里用什么把那个人补出来？",
+        "why": "用 the woman who lived next door，用 who 补上是哪一个。",
+        "use": "和歌词里 the one who understands you 一样：用 who 引导的从句，把那个人补清楚。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2014年",
+        "text": "For anyone who doubts that the texting revolution is upon us, consider this: The average 13-to 17-year-old sends and receives 3,339 texts a month—more than 100 per day, according to the Nielsen Co., the media research firm.",
+        "mark": "anyone who",
+        "ask": "是哪一种人？这里用什么补出来？",
+        "why": "用 anyone who doubts，用 who 补上是哪种人。",
+        "use": "和 the one who 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "Love Story": [
+      {
+        "year": "2013年",
+        "text": "She said, “What is the worst thing that can happen?We lose the house, we sell our cars, and we start all over again.",
+        "mark": "She said,",
+        "ask": "原话跟在哪里后面？",
+        "why": "原话跟在 She said 后面，用引号把当时那句话带出来。",
+        "use": "和歌词里 And I said 后面接原话一样：这是直接引语。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2019年",
+        "text": "Still watching the mother,I said, \"Mind some advice?\"\" “Sure,” said the daughter.",
+        "mark": "I said,",
+        "ask": "原话跟在哪里后面？",
+        "why": "原话跟在 I said 后面；后面 “Sure,” said the daughter 也是同一现象。",
+        "use": "和 I said + 原话一样。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "Yellow": [
+      {
+        "year": "2011年",
+        "text": "I know when the snow melts and the first robins(知更鸟） come to call, when the laughter of children returns to the parks and playgrounds, something wonderful is about to happen.",
+        "mark": "something wonderful",
+        "ask": "wonderful 放在 something 的前面，还是后面？",
+        "why": "要放在 something 后面：something wonderful。",
+        "use": "和歌词里 something beautiful 一样：something / anything / nothing 这类词，形容词要放后面。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2016年",
+        "text": "Maybe something useful will come of Clinton’s idea, but I'm not all that hopeful.",
+        "mark": "something useful",
+        "ask": "useful 放在 something 的前面，还是后面？",
+        "why": "放在后面：something useful。",
+        "use": "和 something beautiful 同一现象。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ],
+    "I'm Not The Only One": [
+      {
+        "year": "2014年",
+        "text": "This consisted of a large, long room at opposite ends of which two undermasters conducted the second and third forms, and of a smaller one, leading out of it, used by Mr. Watson, who taught the first form.",
+        "mark": "a smaller one",
+        "ask": "one 在这里代替什么？还要不要把 room 再说一遍？",
+        "why": "one 代替前面刚说的 room，不必再把名词说一遍。",
+        "use": "和歌词里 the only one 一样：用 one 代替刚说的那种事物或那种人。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      },
+      {
+        "year": "2019年",
+        "text": "The older woman detached from the younger one and began to tick through the DVDs on the nearest shelf.",
+        "mark": "the younger one",
+        "ask": "the younger one 代替的是谁？",
+        "why": "one 代替前面的 woman，就是那个年纪更小的女人。",
+        "use": "和 the only one 同一现象：用 one 代替刚说的那种人。",
+        "source": "专四阅读句子库（对应《专四阅读原文》，不新编课文）"
+      }
+    ]
   },
   "noPassageYet": [
-    "Unstoppable",
     "You Are Not Alone",
     "Just the Way You Are",
-    "Enemy",
-    "One More Night",
-    "A Thousand Years",
-    "Hello My Love",
-    "All of Me",
-    "In The End",
     "2002",
-    "Love Yourself",
     "Wake Me Up",
     "See You Again",
-    "Nothing's Going to Change My Love For You",
     "Believer",
-    "If I Were a Boy",
-    "Stay",
     "Hello",
-    "Apologize",
-    "Perfect",
     "Let Me Down Slowly",
     "Stronger",
-    "Shape of You",
-    "Let It Go",
-    "Rolling in the Deep",
     "Dream It Possible",
-    "With or Without You",
-    "Try Everything",
-    "You Belong With Me",
-    "Love Story",
-    "Yellow",
-    "I'm Not The Only One"
+    "With or Without You"
   ]
 }

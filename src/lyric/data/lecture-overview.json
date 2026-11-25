@@ -314,13 +314,14 @@
     "textbookRef": "17.4",
     "localAudioPath": "/home/vincent/壹仁AI英语/欧美音乐/Uploaded_to_Drive/欧美经典曾经的感动（230首）/If I Were a Boy - Beyoncé.mp3",
     "audioUrl": "/audio/Beyonce_-_If_I_Were_a_Boy.mp3",
-    "timestampsStatus": "pending-align",
-    "selectionNote": "本机有音频，没有对齐的 lrc。歌词按通行原文写入，时间戳待对齐后再补。",
+    "timestampsStatus": "from-embedded-lrc",
+    "selectionNote": "本机有音频。歌词按通行原文写入；时间戳取自该 MP3 内嵌的同步 lrc，已按教学句对上。",
     "examCourseware": 10,
     "examClassified": 25,
     "examTotal": 35,
     "examReadyOptions": 25,
-    "examOptionsNeedReview": 2
+    "examOptionsNeedReview": 2,
+    "timestampsSource": "仓库课程 MP3 内嵌的同步 lrc（随本机音频导入），并用局部识别抽查过教学句。"
   },
   {
     "unit": 18,
@@ -580,13 +581,14 @@
     "textbookRef": "31",
     "localAudioPath": "/home/vincent/壹仁AI英语/欧美音乐/Uploaded_to_Drive/欧美经典老歌金曲（300首）/With or without you - U2.mp3",
     "audioUrl": "/audio/U2_-_With_or_Without_You.mp3",
-    "timestampsStatus": "pending-align",
-    "selectionNote": "本机有音频，没有对齐的 lrc。歌词按通行原文写入，时间戳待对齐后再补。",
+    "timestampsStatus": "from-embedded-lrc",
+    "selectionNote": "本机有音频。歌词按通行原文写入；时间戳取自该 MP3 内嵌的同步 lrc，已按教学句对上。",
     "examCourseware": 6,
     "examClassified": 1,
     "examTotal": 7,
     "examReadyOptions": 4,
-    "examOptionsNeedReview": 3
+    "examOptionsNeedReview": 3,
+    "timestampsSource": "仓库课程 MP3 内嵌的同步 lrc（随本机音频导入），并用局部识别抽查过教学句。"
   },
   {
     "unit": 32,
@@ -694,13 +696,14 @@
     "textbookRef": "37",
     "localAudioPath": "/home/vincent/壹仁AI英语/欧美音乐/Uploaded_to_Drive/听一遍就忘不了的英文歌（380首）/I'm Not The Only One - Sam Smith.mp3",
     "audioUrl": "/audio/Sam_Smith_-_Im_Not_The_Only_One.mp3",
-    "timestampsStatus": "pending-align",
-    "selectionNote": "本机有音频，没有对齐的 lrc。歌词按通行原文写入，时间戳待对齐后再补。",
+    "timestampsStatus": "from-embedded-lrc",
+    "selectionNote": "本机有音频。歌词按通行原文写入；时间戳取自该 MP3 内嵌的同步 lrc，已按教学句对上。",
     "examCourseware": 5,
     "examClassified": 0,
     "examTotal": 5,
     "examReadyOptions": 1,
-    "examOptionsNeedReview": 4
+    "examOptionsNeedReview": 4,
+    "timestampsSource": "仓库课程 MP3 内嵌的同步 lrc（随本机音频导入），并用局部识别抽查过教学句。"
   },
   {
     "unit": 38,
