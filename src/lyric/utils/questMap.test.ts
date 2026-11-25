@@ -8,8 +8,16 @@ import {
   isLectureOpen,
   lectureLight,
   lectureLightLabel,
+  badgeCatalog,
+  earnedBadgeIds,
+  findJustClearedLecture,
+  lectureClearCopy,
+  lectureJustCleared,
   lecturePassUnlocked,
+  mergeBadgeMaps,
+  newlyEarnedBadges,
   nextPassTarget,
+  normalizeBadge,
   officialSong,
   pointPassUnlocked,
   withStatuses,
@@ -138,7 +146,7 @@ describe("quest map lights", () => {
     assert.equal(lectureLightLabel("unseen"), "未学");
     assert.equal(lectureLightLabel("heard"), "已听");
     assert.equal(lectureLightLabel("practiced"), "已练未过 · 继续打");
-    assert.equal(lectureLightLabel("mastered"), "掌握");
+    assert.equal(lectureLightLabel("mastered"), "通关");
   });
 
   it("highlights the first open lecture that is not fully mastered", () => {
@@ -205,5 +213,81 @@ describe("real courseware catalog", () => {
       lectures[point.lecture - 1].points.some((item: { id: string }) => item.id === point.id),
     );
     assert.equal(included.length, openNoLyric.length);
+  });
+});
+
+describe("lecture clear feedback", () => {
+  it("fires only when a lecture flips from not-all-mastered to all mastered", () => {
+    assert.equal(lectureJustCleared(["mastered", "unseen"], ["mastered", "mastered"], true), true);
+    assert.equal(lectureJustCleared(["mastered", "mastered"], ["mastered", "mastered"], true), false);
+    assert.equal(lectureJustCleared(["mastered", "unseen"], ["mastered", "provisional"], true), false);
+    assert.equal(lectureJustCleared(["unseen"], ["mastered"], false), false);
+    const before = live({ "L1-a": "mastered", "L1-b": "practiced" });
+    const after = live({ "L1-a": "mastered", "L1-b": "mastered" });
+    const cleared = findJustClearedLecture(before, after);
+    assert.equal(cleared && cleared.no, 1);
+    assert.equal(findJustClearedLecture(after, after), null);
+    const copy = lectureClearCopy(cleared, after);
+    assert.equal(copy.title, "第1讲通关");
+    assert.match(copy.body, /下一讲已经亮了/);
+    assert.equal(copy.nextLectureNo, 2);
+    const end = live({ "L37-a": "mastered" });
+    const last = lectureClearCopy(end[36], end);
+    assert.match(last.body, /暂未开放/);
+    assert.equal(last.nextLectureNo, 0);
+  });
+});
+
+describe("quest badge drop rules", () => {
+  it("awards a lecture badge only after that lecture is fully mastered", () => {
+    const half = earnedBadgeIds(live({ "L1-a": "mastered" }));
+    assert.equal(half.includes("lecture-1"), false);
+    const one = earnedBadgeIds(live({ "L1-a": "mastered", "L1-b": "mastered" }));
+    assert.equal(one.includes("lecture-1"), true);
+    assert.equal(one.includes("lecture-2"), false);
+    assert.equal(one.includes("group-1"), false);
+  });
+
+  it("drops group and milestone badges for certain cleared lectures, never for 38–40", () => {
+    const two = earnedBadgeIds(live({
+      "L1-a": "mastered",
+      "L1-b": "mastered",
+      "L2-a": "mastered",
+    }));
+    assert.equal(two.includes("lecture-1"), true);
+    assert.equal(two.includes("lecture-2"), true);
+    assert.equal(two.includes("group-1"), true);
+    assert.equal(two.includes("milestone-5"), false);
+    const catalogIds = badgeCatalog(live()).map((badge) => badge.id);
+    assert.equal(catalogIds.includes("lecture-38"), false);
+    assert.equal(catalogIds.includes("lecture-39"), false);
+    assert.equal(catalogIds.includes("lecture-40"), false);
+    const withClosed = earnedBadgeIds(live({
+      "L1-a": "mastered",
+      "L1-b": "mastered",
+      "L2-a": "mastered",
+      "L38-a": "mastered",
+    }));
+    assert.equal(withClosed.includes("lecture-38"), false);
+  });
+
+  it("lists only newly earned badges after a lecture clear", () => {
+    const before = live({ "L1-a": "mastered", "L1-b": "mastered" });
+    const after = live({ "L1-a": "mastered", "L1-b": "mastered", "L2-a": "mastered" });
+    const added = newlyEarnedBadges(before, after).map((badge) => badge.id);
+    assert.deepEqual(added.sort(), ["group-1", "lecture-2"]);
+  });
+
+  it("merges local and remote badges without dropping either, keeping the earlier time", () => {
+    const merged = mergeBadgeMaps(
+      { "lecture-1": { id: "lecture-1", earnedAt: 20, dirty: true } },
+      { "lecture-1": { id: "lecture-1", earnedAt: 5 }, "lecture-2": { id: "lecture-2", earnedAt: 9 } },
+    ) as Record<string, { id: string; earnedAt: number; dirty?: boolean }>;
+    assert.equal(merged["lecture-1"].earnedAt, 5);
+    assert.equal(merged["lecture-1"].dirty, true);
+    assert.equal(merged["lecture-2"].earnedAt, 9);
+    assert.equal(normalizeBadge({ id: "streak-7", earnedAt: 1 }), null);
+    const kept = normalizeBadge({ id: "lecture-1", earnedAt: 3 });
+    assert.equal(kept && kept.id, "lecture-1");
   });
 });

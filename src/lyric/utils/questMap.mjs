@@ -89,7 +89,7 @@ export function lectureLightLabel(light) {
   if (light === "heard") return "已听";
   if (light === "practiced") return "已练未过 · 继续打";
   if (light === "provisional") return "暂过 · 半亮";
-  if (light === "mastered") return "掌握";
+  if (light === "mastered") return "通关";
   return "未学";
 }
 
@@ -183,4 +183,170 @@ export function nextPassTarget(lectures, fromLectureNo, fromPointId) {
     }
   }
   return null;
+}
+
+export function lectureJustCleared(beforeStatuses, afterStatuses, open) {
+  return Boolean(open) && allMastered(afterStatuses) && !allMastered(beforeStatuses);
+}
+
+export function findJustClearedLecture(beforeLectures, afterLectures) {
+  var list = afterLectures || [];
+  for (var i = 0; i < list.length; i++) {
+    var after = list[i];
+    var before = lectureByNo(beforeLectures, after.no);
+    if (lectureJustCleared(before && before.statuses, after.statuses, after.open)) return after;
+  }
+  return null;
+}
+
+export function lectureClearCopy(lecture, lectures) {
+  var no = lecture && lecture.no ? Number(lecture.no) : 0;
+  var title = "第" + no + "讲通关";
+  var next = lectureByNo(lectures, no + 1);
+  var body = "这一讲的可练细点都掌握了。";
+  var nextLectureNo = 0;
+  if (next && next.open && lecturePassUnlocked(next.no, lectures)) {
+    body += "下一讲已经亮了：第" + next.no + "讲" + (next.title ? " " + next.title : "") + "。";
+    nextLectureNo = Number(next.no);
+  } else if (next && !next.open) {
+    body += "后面的讲暂未开放，不编造歌曲。";
+  } else if (!next) {
+    body += "四十讲已经走到头了。";
+  }
+  return { title: title, body: body, nextLectureNo: nextLectureNo };
+}
+
+export var BADGE_MILESTONES = [5, 10, 20];
+
+export function clearedOpenCount(lectures) {
+  var n = 0;
+  (lectures || []).forEach(function (lec) {
+    if (lec.open && allMastered(lec.statuses || [])) n += 1;
+  });
+  return n;
+}
+
+export function badgeCatalog(lectures) {
+  var out = [];
+  var seenGroup = {};
+  (lectures || []).forEach(function (lec) {
+    if (!lec.open) return;
+    out.push({
+      id: "lecture-" + lec.no,
+      title: "第" + lec.no + "讲通关",
+      detail: (lec.title || "") + (lec.songTitle ? " · 《" + lec.songTitle + "》" : ""),
+    });
+  });
+  (lectures || []).forEach(function (lec) {
+    if (!lec.group || seenGroup[lec.group]) return;
+    seenGroup[lec.group] = true;
+    var members = (lectures || []).filter(function (item) {
+      return item.group === lec.group && item.open;
+    });
+    if (!members.length) return;
+    out.push({
+      id: "group-" + members[0].no,
+      title: "过完「" + lec.group + "」",
+      detail: "这一组已开放的讲都掌握了",
+      lectureNos: members.map(function (item) { return item.no; }),
+    });
+  });
+  BADGE_MILESTONES.forEach(function (count) {
+    out.push({
+      id: "milestone-" + count,
+      title: "过完 " + count + " 讲",
+      detail: "已开放的讲里，有 " + count + " 讲都掌握了",
+      count: count,
+    });
+  });
+  var openCount = (lectures || []).filter(function (lec) { return lec.open; }).length;
+  if (openCount) {
+    out.push({
+      id: "path-open",
+      title: "已开放关卡全部通关",
+      detail: "已开放的 " + openCount + " 讲都掌握了",
+    });
+  }
+  return out;
+}
+
+export function earnedBadgeIds(lectures) {
+  var catalog = badgeCatalog(lectures);
+  var cleared = {};
+  var count = clearedOpenCount(lectures);
+  (lectures || []).forEach(function (lec) {
+    if (lec.open && allMastered(lec.statuses || [])) cleared[lec.no] = true;
+  });
+  var ids = [];
+  catalog.forEach(function (badge) {
+    if (badge.id.indexOf("lecture-") === 0) {
+      if (cleared[Number(String(badge.id).slice(8))]) ids.push(badge.id);
+      return;
+    }
+    if (badge.lectureNos && badge.lectureNos.length) {
+      var ok = true;
+      for (var i = 0; i < badge.lectureNos.length; i++) {
+        if (!cleared[badge.lectureNos[i]]) ok = false;
+      }
+      if (ok) ids.push(badge.id);
+      return;
+    }
+    if (badge.count) {
+      if (count >= badge.count) ids.push(badge.id);
+      return;
+    }
+    if (badge.id === "path-open") {
+      var openCount = (lectures || []).filter(function (lec) { return lec.open; }).length;
+      if (openCount && count === openCount) ids.push(badge.id);
+    }
+  });
+  return ids;
+}
+
+export function newlyEarnedBadges(beforeLectures, afterLectures) {
+  var before = {};
+  earnedBadgeIds(beforeLectures).forEach(function (id) { before[id] = true; });
+  var catalog = badgeCatalog(afterLectures);
+  var byId = {};
+  catalog.forEach(function (badge) { byId[badge.id] = badge; });
+  var out = [];
+  earnedBadgeIds(afterLectures).forEach(function (id) {
+    if (!before[id] && byId[id]) out.push(byId[id]);
+  });
+  return out;
+}
+
+export function isKnownBadgeId(id) {
+  return /^(lecture-\d+|group-\d+|milestone-\d+|path-open)$/.test(String(id || ""));
+}
+
+export function normalizeBadge(row) {
+  var id = String((row && (row.id || row.badgeId)) || "").slice(0, 80);
+  if (!isKnownBadgeId(id)) return null;
+  return {
+    id: id,
+    earnedAt: Number(row && row.earnedAt) || 0,
+    dirty: Boolean(row && row.dirty),
+  };
+}
+
+export function mergeBadgeMaps(localMap, remoteMap) {
+  var out = {};
+  var ids = {};
+  var local = localMap || {};
+  var remote = remoteMap || {};
+  Object.keys(local).forEach(function (id) { ids[id] = true; });
+  Object.keys(remote).forEach(function (id) { ids[id] = true; });
+  Object.keys(ids).forEach(function (id) {
+    var a = normalizeBadge(local[id] ? Object.assign({ id: id }, local[id]) : null);
+    var b = normalizeBadge(remote[id] ? Object.assign({ id: id }, remote[id]) : null);
+    if (!a && !b) return;
+    if (!a) { out[id] = b; return; }
+    if (!b) { out[id] = a; return; }
+    var earnedAt = 0;
+    if (a.earnedAt && b.earnedAt) earnedAt = Math.min(a.earnedAt, b.earnedAt);
+    else earnedAt = a.earnedAt || b.earnedAt;
+    out[id] = { id: id, earnedAt: earnedAt, dirty: Boolean(a.dirty) };
+  });
+  return out;
 }

@@ -20,6 +20,7 @@ var rewriteDraft = "";
 var followDraft = "";
 var speechNote = "";
 var listeningMic = false;
+var badgeMap = {};
 
 function storageKey() {
   return "lyricgrammar-progress-v1:" + (progressAccount || "local");
@@ -35,14 +36,34 @@ function loadProgressMap() {
 function persistProgress() {
   try { localStorage.setItem(storageKey(), JSON.stringify(progressMap)); } catch (error) {}
 }
+function badgeStorageKey() {
+  return "lyricgrammar-badges-v1:" + (progressAccount || "local");
+}
+function loadBadgeMap() {
+  try {
+    var raw = localStorage.getItem(badgeStorageKey());
+    badgeMap = raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    badgeMap = {};
+  }
+}
+function persistBadges() {
+  try { localStorage.setItem(badgeStorageKey(), JSON.stringify(badgeMap)); } catch (error) {}
+}
 function adoptAccount(userId) {
   if (!userId || userId === progressAccount) return;
   var previous = progressMap;
+  var previousBadges = badgeMap;
   var movingLocal = !progressAccount || progressAccount === "local";
   progressAccount = userId;
   loadProgressMap();
-  if (movingLocal) progressMap = mergeMaps(previous, progressMap);
+  loadBadgeMap();
+  if (movingLocal) {
+    progressMap = mergeMaps(previous, progressMap);
+    badgeMap = mergeBadgeMaps(previousBadges, badgeMap);
+  }
   persistProgress();
+  persistBadges();
 }
 function getProgress(pointId) {
   if (!pointId) return emptyRecord("");
@@ -172,8 +193,18 @@ function applyRemotePayload(data) {
     }
     progressMap = mergeMaps(progressMap, remote);
     persistProgress();
-    if (typeof render === "function") render();
   }
+  if (data.badges && data.badges.length) {
+    var remoteBadges = {};
+    for (var b = 0; b < data.badges.length; b++) {
+      var badge = normalizeBadge(data.badges[b]);
+      if (badge) remoteBadges[badge.id] = badge;
+    }
+    badgeMap = mergeBadgeMaps(badgeMap, remoteBadges);
+    persistBadges();
+  }
+  if (typeof catchUpBadges === "function") catchUpBadges();
+  if (typeof render === "function") render();
 }
 function flushProgress() {
   if (location.protocol !== "http:" && location.protocol !== "https:") return;
@@ -186,7 +217,7 @@ function flushProgress() {
     method: "POST",
     headers: { "content-type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ items: items })
+    body: JSON.stringify({ items: items, badges: badgesForSync() })
   }).then(function (res) {
     if (res.status === 401) return null;
     if (!res.ok) throw new Error("bad");
@@ -209,6 +240,7 @@ function pullProgress() {
 function recheckProvisional() {
   if (recheckBusy) return;
   if (location.protocol !== "http:" && location.protocol !== "https:") return;
+  var beforeLectures = typeof liveQuestLectures === "function" ? liveQuestLectures() : [];
   var pending = [];
   Object.keys(progressMap).forEach(function (id) {
     var row = normalizeRecord(progressMap[id]);
@@ -220,7 +252,12 @@ function recheckProvisional() {
     if (i >= pending.length) {
       recheckBusy = false;
       persistProgress();
+      var sync = typeof syncBadgesFromLectures === "function" ? syncBadgesFromLectures(beforeLectures) : null;
       if (mode === "builder" || mode === "book" || mode === "grammar" || mode === "map") render();
+      if (sync && sync.cleared && mode === "builder") {
+        var box = document.getElementById("sentence-result");
+        if (box) showVerdict({ verdict: "pass", note: "" }, { lectureClear: sync.cleared, newBadges: sync.added });
+      }
       return;
     }
     var row = pending[i];
@@ -472,19 +509,27 @@ function showVerdict(result, options) {
     extra = "<p>还要再独立写一句，才能记掌握或暂过。</p>";
     verdict = "provisional";
   } else if (verdict === "pass") {
-    extra = "<p>这一关亮了。</p>";
-    var current = currentPoint();
-    var lectures = typeof liveQuestLectures === "function" ? liveQuestLectures() : [];
-    var target = typeof nextPassTarget === "function"
-      ? nextPassTarget(lectures, current && current.lecture, current && current.id)
-      : null;
-    if (target && target.pointId) {
-      extra += '<div class="quest-actions"><button class="chip on wide" data-quest-next="' +
-        escapeHtml(target.pointId) + '" data-quest-lec="' + target.lectureNo +
-        '" type="button">去下一关</button></div>';
+    var clear = options && options.lectureClear;
+    if (clear) {
+      var copy = lectureClearCopy(clear, liveQuestLectures());
+      title = copy.title;
+      extra = lectureClearExtraHtml(copy, (options && options.newBadges) || []);
+      verdict = "pass lecture-clear";
+    } else {
+      extra = "<p>这一关亮了。</p>";
+      var current = currentPoint();
+      var lectures = typeof liveQuestLectures === "function" ? liveQuestLectures() : [];
+      var target = typeof nextPassTarget === "function"
+        ? nextPassTarget(lectures, current && current.lecture, current && current.id)
+        : null;
+      if (target && target.pointId) {
+        extra += '<div class="quest-actions"><button class="chip on wide" data-quest-next="' +
+          escapeHtml(target.pointId) + '" data-quest-lec="' + target.lectureNo +
+          '" type="button">去下一关</button></div>';
+      }
+      extra += '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
+        '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div>';
     }
-    extra += '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
-      '<button class="chip wide" id="to-map-main" type="button">返回地图</button></div>';
   } else if (verdict === "provisional") {
     extra = "<p>没网或还没有核到 AI。灯先半亮。离线暂过不算正式掌握，有网再核一次才算，还不能解锁下一关。</p>";
     extra += '<div class="quest-actions"><button class="chip wide" id="back-quest-lec" type="button">返回这一讲</button>' +
@@ -503,17 +548,20 @@ function applyVerdict(pointId, sentence, result, isFrameOnly) {
     showVerdict(result, { frameOnly: isFrameOnly });
     return;
   }
+  var beforeLectures = typeof liveQuestLectures === "function" ? liveQuestLectures() : [];
   var event = verdictEvent(verdict, pointId, sentence, isFrameOnly);
   setProgress(pointId, event);
   if (isFrameOnly && (verdict === "pass" || verdict === "provisional")) {
     waitingIndependent = true;
     frameDraft = "";
   }
-  showVerdict(result, { frameOnly: isFrameOnly });
+  var sync = typeof syncBadgesFromLectures === "function" ? syncBadgesFromLectures(beforeLectures) : {};
+  var verdictOpts = { frameOnly: isFrameOnly, lectureClear: sync && sync.cleared, newBadges: (sync && sync.added) || [] };
+  showVerdict(result, verdictOpts);
   if (!isFrameOnly) renderBuilder();
   else renderBuilder();
   var again = document.getElementById("sentence-result");
-  if (again) showVerdict(result, { frameOnly: isFrameOnly });
+  if (again) showVerdict(result, verdictOpts);
 }
 
 function localGate(sentence, point) {
@@ -586,6 +634,8 @@ function checkPass(isFrameOnly) {
 }
 
 loadProgressMap();
+loadBadgeMap();
+if (typeof catchUpBadges === "function") catchUpBadges();
 if (typeof render === "function") render();
 if (typeof window !== "undefined") {
   window.addEventListener("online", function () { pullProgress(); });
@@ -637,6 +687,7 @@ if (mapHome && !mapHome.getAttribute("data-quest-bound")) {
     questLec = "";
     questPoint = "";
     questHint = "";
+    questView = "";
     if (typeof closeSheet === "function") closeSheet();
     render();
   };
@@ -1270,6 +1321,92 @@ function toggleMic() {
 }
 
 
+
+function badgesForSync() {
+  var items = [];
+  Object.keys(badgeMap || {}).forEach(function (id) {
+    var badge = normalizeBadge(Object.assign({ id: id }, badgeMap[id]));
+    if (badge) items.push(badge);
+  });
+  return items;
+}
+
+function catchUpBadges() {
+  if (typeof liveQuestLectures !== "function" || typeof earnedBadgeIds !== "function") return;
+  var earned = earnedBadgeIds(liveQuestLectures());
+  var now = Date.now();
+  var changed = false;
+  earned.forEach(function (id) {
+    if (!badgeMap[id]) {
+      badgeMap[id] = { id: id, earnedAt: now, dirty: true };
+      changed = true;
+    }
+  });
+  if (changed) {
+    persistBadges();
+    scheduleSync();
+  }
+}
+
+function syncBadgesFromLectures(beforeLectures) {
+  var after = liveQuestLectures();
+  var added = newlyEarnedBadges(beforeLectures, after);
+  var now = Date.now();
+  added.forEach(function (badge) {
+    if (!badgeMap[badge.id]) badgeMap[badge.id] = { id: badge.id, earnedAt: now, dirty: true };
+  });
+  catchUpBadges();
+  var cleared = findJustClearedLecture(beforeLectures, after);
+  if (cleared) {
+    var copy = lectureClearCopy(cleared, after);
+    questClear = { lectureNo: cleared.no, copy: copy, badges: added, nextLectureNo: copy.nextLectureNo };
+    questJustUnlocked = copy.nextLectureNo || 0;
+  }
+  if (added.length) persistBadges();
+  return { added: added, cleared: cleared };
+}
+
+function lectureClearExtraHtml(copy, badges) {
+  var html = "<p>" + escapeHtml(copy.body) + "</p>";
+  if (badges && badges.length) {
+    html += "<p>获得勋章：" + escapeHtml(badges.map(function (item) { return item.title; }).join("、")) + "</p>";
+  }
+  html += '<div class="quest-actions">';
+  if (copy.nextLectureNo) {
+    html += '<button class="chip on wide" data-quest-next-lec="' + copy.nextLectureNo + '" type="button">去下一讲</button>';
+  }
+  html += '<button class="chip wide" data-quest-badges="1" type="button">看勋章</button>';
+  html += '<button class="chip wide" id="to-map-main" type="button">返回地图</button>';
+  html += "</div>";
+  return html;
+}
+
+function lectureClearCardHtml() {
+  if (!questClear || !questClear.copy) return "";
+  return '<div class="verdict pass lecture-clear"><b>' + escapeHtml(questClear.copy.title) + "</b>" +
+    lectureClearExtraHtml(questClear.copy, questClear.badges || []) + "</div>";
+}
+
+function renderQuestBadges() {
+  var lectures = liveQuestLectures();
+  var catalog = badgeCatalog(lectures);
+  var earned = earnedBadgeIds(lectures);
+  var have = {};
+  earned.forEach(function (id) { have[id] = true; });
+  Object.keys(badgeMap || {}).forEach(function (id) { have[id] = true; });
+  var html = '<div class="quest-actions"><button class="chip" id="back-quest-map" type="button">返回地图</button></div>';
+  html += '<p class="map-intro">过完一讲，或过完一组已开放的讲，会记下轻量勋章。挂在登录账号上，没网先记在手机里。没有连续打卡。</p>';
+  var count = 0;
+  catalog.forEach(function (badge) { if (have[badge.id]) count += 1; });
+  html += "<p class=\"map-intro\">已获得 " + count + " 枚勋章。</p>";
+  catalog.forEach(function (badge) {
+    if (!have[badge.id]) return;
+    html += '<div class="medal"><b>' + escapeHtml(badge.title) + "</b><small>" + escapeHtml(badge.detail || "") + "</small></div>";
+  });
+  if (!count) html += '<div class="card"><p>还没有勋章。过完一讲就会得到第一枚。</p></div>';
+  stage.innerHTML = html;
+}
+
 function liveQuestLectures() {
   return withStatuses(buildLectures(BOOK, SONGS, POINTS), function (id) {
     return getProgress(id).status;
@@ -1280,6 +1417,11 @@ function paintQuestHeader() {
   var title = document.getElementById("title");
   var pointEl = document.getElementById("point");
   if (!title || !pointEl) return;
+  if (questView === "badges") {
+    title.textContent = "勋章";
+    pointEl.textContent = "过完一讲或一组讲就会记下";
+    return;
+  }
   if (!questLec) {
     title.textContent = "四十讲关卡";
     pointEl.textContent = "过了才亮下一关。先听、先看不记掌握。";
@@ -1325,6 +1467,10 @@ function renderQuest() {
   paintQuestHeader();
   var lectures = liveQuestLectures();
   var hint = questHint ? ('<p class="lock-note">' + escapeHtml(questHint) + "</p>") : "";
+  if (questView === "badges") {
+    renderQuestBadges();
+    return;
+  }
   if (questPoint) {
     renderQuestStage(lectureByNo(lectures, questLec), questPoint, hint);
     return;
@@ -1338,12 +1484,18 @@ function renderQuest() {
 
 function renderQuestMap(lectures, hint) {
   var current = currentLectureNo(lectures);
-  var html = '<p class="map-intro">一讲一大关。点进去可以先听、先看。要亮灯，必须过关。后面的讲看得见，也可以先进去听，但不记掌握。</p>' + hint;
+  var earnedCount = earnedBadgeIds(lectures).length;
+  var html = lectureClearCardHtml();
+  html += '<p class="map-intro">一讲一大关。点进去可以先听、先看。要亮灯，必须过关。后面的讲看得见，也可以先进去听，但不记掌握。</p>' + hint;
+  html += '<div class="quest-actions"><button class="chip" data-quest-badges="1" type="button">勋章' +
+    (earnedCount ? " · " + earnedCount : "") + "</button></div>";
   html += '<div class="map-path">';
   lectures.forEach(function (lec) {
     var light = lec.light || "unseen";
     var cls = "map-node " + light;
     if (current && Number(lec.no) === current) cls += " current";
+    if (questClear && Number(lec.no) === Number(questClear.lectureNo)) cls += " just-cleared";
+    if (questJustUnlocked && Number(lec.no) === Number(questJustUnlocked)) cls += " just-lit";
     var songLine = lec.open ? (lec.songTitle ? ("《" + lec.songTitle + "》") : "") : "暂未开放";
     var mark = lectureLightLabel(light);
     var mastered = 0;
@@ -1358,7 +1510,7 @@ function renderQuestMap(lectures, hint) {
   });
   html += "</div>";
   stage.innerHTML = html;
-  var currentNode = stage.querySelector(".map-node.current");
+  var currentNode = stage.querySelector(".map-node.just-lit") || stage.querySelector(".map-node.just-cleared") || stage.querySelector(".map-node.current");
   if (currentNode && currentNode.scrollIntoView) currentNode.scrollIntoView({ block: "center" });
 }
 
@@ -1369,6 +1521,7 @@ function renderQuestLecture(lec, lectures, hint) {
     return;
   }
   var html = questNavHtml() + hint;
+  if (questClear && Number(questClear.lectureNo) === Number(lec.no)) html += lectureClearCardHtml();
   if (!lec.open) {
     html += '<div class="card"><b>第' + lec.no + "讲 " + escapeHtml(lec.title || "") +
       "</b><p>这一讲暂未开放。还没有合适的歌，不编造歌曲。</p></div>";
@@ -1459,6 +1612,22 @@ function renderQuestStage(lec, pointId, hint) {
 }
 
 function handleQuestClick(event) {
+  var qnextLec = event.target.closest("[data-quest-next-lec]");
+  if (qnextLec) {
+    questView = "";
+    questClear = null;
+    openQuestLecture(qnextLec.getAttribute("data-quest-next-lec"));
+    return true;
+  }
+  if (event.target.closest("[data-quest-badges]")) {
+    mode = "map";
+    questView = "badges";
+    questLec = "";
+    questPoint = "";
+    questHint = "";
+    render();
+    return true;
+  }
   var qnext = event.target.closest("[data-quest-next]");
   if (qnext) {
     questLec = qnext.getAttribute("data-quest-lec") || questLec;
@@ -1512,6 +1681,7 @@ function handleQuestClick(event) {
     questLec = "";
     questPoint = "";
     questHint = "";
+    questView = "";
     render();
     return true;
   }

@@ -279,6 +279,24 @@ function renderPlayer(
   .map-node.closed .lamp, .stage-item.locked .lamp { background: #f1f5f9; border-color: #e2e8f0; }
   .quest-actions .chip { width: 100%; margin-top: 10px; text-align: center; min-height: 48px; }
   .lock-note { margin: 8px 0 12px; color: #b45309; font-size: 14px; line-height: 1.45; }
+  .map-node .lamp, .stage-item .lamp { transition: background-color .25s ease, border-color .25s ease, transform .25s ease; }
+  .verdict.pass, .verdict.provisional, .verdict.fail { animation: quest-pop .35s ease-out; }
+  .verdict.lecture-clear { padding: 16px; animation: quest-pop .45s ease-out; }
+  .verdict.lecture-clear b { font-size: 18px; }
+  .map-node.just-cleared, .stage-item.just-cleared { animation: quest-pop .45s ease-out; }
+  .map-node.just-cleared .lamp, .stage-item.just-cleared .lamp, .map-node.just-lit .lamp { animation: lamp-on .45s ease-out; }
+  .map-node.just-lit { box-shadow: 0 0 0 3px #fde68a; animation: quest-pop .45s ease-out; }
+  .medal { display: block; width: 100%; text-align: left; margin: 0 0 10px; padding: 14px 16px; min-height: 64px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; font: inherit; color: inherit; }
+  .medal b { display: block; font-size: 16px; }
+  .medal small { display: block; margin-top: 4px; color: #64748b; font-size: 13px; }
+  @keyframes quest-pop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes lamp-on { 0% { transform: scale(.7); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .verdict.pass, .verdict.provisional, .verdict.fail, .verdict.lecture-clear,
+    .map-node.just-cleared, .map-node.just-lit, .stage-item.just-cleared,
+    .map-node.just-cleared .lamp, .stage-item.just-cleared .lamp, .map-node.just-lit .lamp { animation: none; }
+    .map-node .lamp, .stage-item .lamp { transition: none; }
+  }
 </style>
 </head>
 <body class="mode-map quiet">
@@ -372,6 +390,9 @@ let mode = "map";
 let questLec = "";
 let questPoint = "";
 let questHint = "";
+let questView = "";
+let questClear = null;
+let questJustUnlocked = 0;
 let rate = 1;
 let shown = -1;
 let grammarIndex = 0;
@@ -979,7 +1000,7 @@ function render() {
   document.body.className = "mode-" + mode + (quiet ? " quiet" : "");
   const mapBtn = document.getElementById("to-map");
   if (mapBtn) {
-    if (mode === "map" && !questLec) mapBtn.setAttribute("hidden", "");
+    if (mode === "map" && !questLec && !questView) mapBtn.setAttribute("hidden", "");
     else mapBtn.removeAttribute("hidden");
   }
   if (mode === "map") {
@@ -1284,7 +1305,7 @@ document.querySelectorAll(".nav").forEach(function (nav) {
       examFrom = "song";
     }
     if (mode === "book") { /* keep last folder/point */ }
-    if (mode === "map") { questLec = ""; questPoint = ""; questHint = ""; }
+    if (mode === "map") { questLec = ""; questPoint = ""; questHint = ""; questView = ""; }
     if (mode !== "listen" && mode !== "mv") shown = -1;
     closeSheet();
     render();
