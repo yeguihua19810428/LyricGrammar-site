@@ -248,6 +248,12 @@ function renderPlayer(
   .verdict.fail { border-color: #f43f5e; background: #fff1f2; }
   .verdict.provisional { border-color: #eab308; background: #fefce8; }
   .verdict b { display: block; margin-bottom: 4px; }
+
+  .pick { display: inline; border: 0; background: transparent; font: inherit; padding: 6px 2px; min-height: 44px; cursor: pointer; border-radius: 4px; }
+  .pick.on { background: #fde68a; }
+  .pick-line { font-size: 18px; line-height: 1.8; }
+  #speech-note, .hint { color: #64748b; font-size: 14px; }
+  .chip.mic { min-height: 56px; font-size: 16px; }
 </style>
 </head>
 <body class="${first?.videoUrl ? "mode-mv" : "mode-listen"}">

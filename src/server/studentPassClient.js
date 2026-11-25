@@ -11,6 +11,15 @@ var recheckTried = {};
 var keepPractice = false;
 var passDraft = "";
 var frameDraft = "";
+var practiceTask = "";
+var pickFrom = -1;
+var pickTo = -1;
+var pickReady = false;
+var explainDraft = "";
+var rewriteDraft = "";
+var followDraft = "";
+var speechNote = "";
+var listeningMic = false;
 
 function storageKey() {
   return "lyricgrammar-progress-v1:" + (progressAccount || "local");
@@ -100,6 +109,15 @@ function startPractice(pointId) {
   waitingIndependent = Boolean(pointId && getProgress(pointId).framePassed);
   passDraft = "";
   frameDraft = "";
+  practiceTask = "";
+  pickFrom = -1;
+  pickTo = -1;
+  pickReady = false;
+  explainDraft = "";
+  rewriteDraft = "";
+  followDraft = "";
+  speechNote = "";
+  listeningMic = false;
   if (point && point.song) {
     var next = findSongIndex(point.song);
     if (next >= 0 && next !== index) {
@@ -574,7 +592,707 @@ if (stage && !stage.getAttribute("data-pass-bound")) {
 
 var previousLoadSong = loadSong;
 loadSong = function (next, autoplay) {
-  if (!keepPractice) practicePointId = "";
+  if (!keepPractice) { practicePointId = ""; practiceTask = ""; }
   keepPractice = false;
   previousLoadSong(next, autoplay);
 };
+
+function pointKind(point) {
+  if (!point) return detectJudgeKind(focusName(), tipText(), "");
+  return detectJudgeKind(point.oralName, point.say, point.lyricLine);
+}
+
+function matchingReadings(point) {
+  var title = (point && point.song) || (song() && song().title) || "";
+  var pack = (typeof READINGS !== "undefined" && READINGS[title]) || [];
+  if (!pack.length) return [];
+  var kind = pointKind(point);
+  if (kind === "generic") return [];
+  var hits = [];
+  for (var i = 0; i < pack.length; i++) {
+    var mark = String((pack[i] && pack[i].mark) || "");
+    var ask = String((pack[i] && pack[i].ask) || "");
+    var probe = detectJudgeKind("", ask, mark);
+    var ok = probe === kind;
+    if (!ok && kind === "already" && /say/i.test(mark)) ok = true;
+    if (!ok && kind === "future-if" && /^if\b/i.test(mark)) ok = true;
+    if (!ok && kind === "to-verb" && /^to\s+/i.test(mark)) ok = true;
+    if (!ok && kind === "walking" && /ing$/i.test(mark)) ok = true;
+    if (!ok && kind === "dressed" && /(ed|tired)$/i.test(mark)) ok = true;
+    if (ok) hits.push(pack[i]);
+  }
+  return hits;
+}
+
+function splitTokens(text) {
+  var parts = String(text || "").split(/(\s+)/);
+  var words = [];
+  for (var i = 0; i < parts.length; i++) {
+    if (!parts[i] || /^\s+$/.test(parts[i])) continue;
+    words.push(parts[i]);
+  }
+  return words;
+}
+
+function tokenButtons(text, from, to) {
+  var parts = String(text || "").split(/(\s+)/);
+  var wordIndex = -1;
+  var html = "";
+  for (var i = 0; i < parts.length; i++) {
+    if (!parts[i]) continue;
+    if (/^\s+$/.test(parts[i])) {
+      html += parts[i];
+      continue;
+    }
+    wordIndex += 1;
+    var lo = Math.min(from, to);
+    var hi = Math.max(from, to);
+    var on = from >= 0 && to >= 0 && wordIndex >= lo && wordIndex <= hi;
+    html += '<button class="pick' + (on ? " on" : "") + '" data-tok="' + wordIndex + '" type="button">' +
+      escapeHtml(parts[i]) + "</button>";
+  }
+  return html;
+}
+
+function selectedTokens(text, from, to) {
+  if (from < 0 || to < 0) return "";
+  var words = splitTokens(text);
+  var lo = Math.min(from, to);
+  var hi = Math.max(from, to);
+  return words.slice(lo, hi + 1).join(" ");
+}
+
+function backToHub() {
+  practiceTask = "";
+  pickFrom = -1;
+  pickTo = -1;
+  pickReady = false;
+  speechNote = "";
+  renderBuilder();
+}
+
+function saveOpenDrafts() {
+  var box = document.getElementById("sentence");
+  var frameBox = document.getElementById("frame-sentence");
+  var explainBox = document.getElementById("explain-text");
+  var rewriteBox = document.getElementById("rewrite-text");
+  var followBox = document.getElementById("follow-text");
+  if (box) passDraft = box.value;
+  if (frameBox) frameDraft = frameBox.value;
+  if (explainBox) explainDraft = explainBox.value;
+  if (rewriteBox) rewriteDraft = rewriteBox.value;
+  if (followBox) followDraft = followBox.value;
+}
+
+function renderPracticeHub(point, attached) {
+  var rec = getProgress(point.id);
+  var lyric = point.lyricLine
+    ? '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + '</b><small>' +
+      escapeHtml(point.lyricTranslation || "") + "</small></p>"
+    : '<p class="miss">暂无对应歌词。请用自己的句子来练，不编造歌词。</p>';
+  var lineIndex = pointLineIndex(point);
+  var hear = lineIndex >= 0
+    ? '<button class="chip" data-hear="' + lineIndex + '" data-heard-point="' + escapeHtml(point.id) + '" type="button">再听原句</button>'
+    : "";
+  var more = attached.length > 1
+    ? '<button class="chip" id="pick-point" type="button">换一条细点</button>'
+    : "";
+  var tasks = '<button class="chip on wide" data-task="own" type="button">写成自己的</button>' +
+    '<button class="chip wide" data-task="explain" type="button">指出并说明</button>' +
+    '<button class="chip wide" data-task="speak" type="button">开口用上</button>';
+  if (point.lyricLine) tasks += '<button class="chip wide" data-task="rewrite" type="button">改一句歌词</button>';
+  if (rec.status === "mastered" && matchingReadings(point).length) {
+    tasks += '<button class="chip wide" data-task="read" type="button">到阅读里标出同一现象</button>';
+  }
+  stage.innerHTML = '<div class="card"><div class="row-head"><b>过关</b>' + badgeHtml(rec.status) +
+    '</div><p class="small">' + escapeHtml(point.oralName) +
+    (point.lecture ? " · 第" + point.lecture + "讲" : "") +
+    "</p><p>" + escapeHtml(point.say || tipText()) + "</p>" + lyric +
+    "<p class=\"hint\">每次只过当前这一条。看完、听完、填空做对都不记掌握。请选一件事来做。</p>" +
+    hear + tasks + more + "</div>";
+}
+
+function hearAndFrame(point, rec, kind) {
+  var lineIndex = pointLineIndex(point);
+  var hear = lineIndex >= 0
+    ? '<button class="chip" id="hear-again" data-hear="' + lineIndex + '" data-heard-point="' + escapeHtml(point.id) + '" type="button">再听原句</button>'
+    : "";
+  var frameBlock = "";
+  if (rec.failCount >= 2 && !waitingIndependent && rec.status !== "mastered") {
+    var frameText = practiceTask === "explain" ? explainFrame(kind) : sentenceFrame(kind);
+    var frameTitle = practiceTask === "explain" ? "先用这个架子说明" : "先用这个架子写一句";
+    frameBlock = '<div class="card"><b>' + frameTitle +
+      "</b><p>填进你自己的话，不是选择题。架子过了以后，还要再独立做一次，才能算过。</p><p>" +
+      escapeHtml(frameText) +
+      '</p><textarea id="frame-sentence" rows="2" placeholder="用架子写成一句">' + escapeHtml(frameDraft) +
+      '</textarea><button class="chip wide" id="check-frame" type="button">先交架子这句</button></div>';
+  }
+  return { hear: hear, frameBlock: frameBlock };
+}
+
+function renderOwnTask(point, attached) {
+  var rec = getProgress(point.id);
+  var kind = pointKind(point);
+  var bits = hearAndFrame(point, rec, kind);
+  var lyric = point.lyricLine
+    ? '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + '</b><small>' +
+      escapeHtml(point.lyricTranslation || "") + "</small></p>"
+    : '<p class="miss">暂无对应歌词。请用自己的句子来练，不编造歌词。</p>';
+  var speaking = practiceTask === "speak";
+  var title = speaking ? "开口用上" : "过关：换成你自己的事";
+  var prompt = speaking ? speakPrompt(kind) : "用这个办法写一句你自己的完整话。";
+  var mic = "";
+  if (speaking) {
+    mic = '<p class="hint">先把你说的话转成文字，再按和「写成自己的」相同的标准判断。先不打发音分。没有麦克、没网或开口不好用时，请改打字，也可记暂过。</p>' +
+      '<button class="chip on wide mic" id="start-mic" type="button">' +
+      (listeningMic ? "停下来" : "对着手机说") + "</button>" +
+      '<p id="speech-note">' + escapeHtml(speechNote || "也可以直接打字。") + "</p>";
+  }
+  var independentNote = waitingIndependent || rec.framePassed
+    ? "<p>架子已经过了。现在请再独立做一次，才能记掌握或暂过。</p>"
+    : "";
+  var more = attached.length > 1
+    ? '<button class="chip" id="pick-point" type="button">换一条细点</button>'
+    : "";
+  stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
+    '<div class="card"><div class="row-head"><b>' + title + "</b>" + badgeHtml(rec.status) +
+    '</div><p class="small">' + escapeHtml(point.oralName) +
+    (point.lecture ? " · 第" + point.lecture + "讲" : "") +
+    "</p><p>" + escapeHtml(speaking ? prompt : (point.say || tipText())) + "</p>" + lyric +
+    (speaking ? "<p>" + escapeHtml(point.say || tipText()) + "</p>" : "") +
+    independentNote + mic +
+    '<textarea id="sentence" rows="3" placeholder="' + (speaking ? "开口转写会出现在这里，也可以改打字。" : "用这个办法写一句你自己的完整话。") + '">' +
+    escapeHtml(passDraft) + "</textarea>" + bits.hear +
+    '<button class="chip on wide" id="check-sentence" type="button">交一版，看过没过</button>' +
+    '<div id="sentence-result"></div>' + more + "</div>" + bits.frameBlock;
+}
+
+function renderExplainTask(point) {
+  var rec = getProgress(point.id);
+  var kind = pointKind(point);
+  var bits = hearAndFrame(point, rec, kind);
+  var independentNote = waitingIndependent || rec.framePassed
+    ? "<p>架子已经过了。现在请再独立说明一次，才能记掌握或暂过。</p>"
+    : "";
+  var body;
+  if (!point.lyricLine) {
+    body = '<p class="miss">暂无对应歌词，不能点歌词。请用自己的句子，再加上一句说明来练。</p>' +
+      '<textarea id="sentence" rows="3" placeholder="先写一句你自己的完整话。">' + escapeHtml(passDraft) + "</textarea>" +
+      '<textarea id="explain-text" rows="3" placeholder="再用自己的话说明为什么。">' + escapeHtml(explainDraft) + "</textarea>";
+  } else {
+    body = '<p>请点出承载这个现象的那几个词。点错了会先挡住，对了再说明为什么。</p>' +
+      '<p class="pick-line lyric">' + tokenButtons(point.lyricLine, pickFrom, pickTo) + "</p>" +
+      (point.lyricTranslation ? "<small>" + escapeHtml(point.lyricTranslation) + "</small>" : "") +
+      '<button class="chip wide" id="clear-pick" type="button">重选</button>' +
+      '<button class="chip on wide" id="confirm-pick" type="button">就点这几个词</button>';
+    if (pickReady) {
+      body += '<p>点对了。请再用自己的话说明为什么。</p>' +
+        '<textarea id="explain-text" rows="3" placeholder="用自己的话说明为什么。">' + escapeHtml(explainDraft) + "</textarea>" +
+        '<button class="chip on wide" id="check-explain" type="button">交说明，看过没过</button>';
+    }
+  }
+  if (!point.lyricLine) {
+    body += '<button class="chip on wide" id="check-explain" type="button">交说明，看过没过</button>';
+  }
+  stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
+    '<div class="card"><div class="row-head"><b>指出并说明</b>' + badgeHtml(rec.status) +
+    '</div><p class="small">' + escapeHtml(point.oralName) + "</p><p>" +
+    escapeHtml(point.say || tipText()) + "</p>" + independentNote + body + bits.hear +
+    '<div id="sentence-result"></div></div>' + bits.frameBlock;
+}
+
+function renderRewriteTask(point) {
+  var rec = getProgress(point.id);
+  var kind = pointKind(point);
+  var bits = hearAndFrame(point, rec, kind);
+  if (!point.lyricLine) {
+    stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
+      '<div class="card"><b>改一句歌词</b><p class="miss">暂无对应歌词，不能改歌词。请用自己的句子来练，不编造歌词。</p></div>';
+    return;
+  }
+  var independentNote = waitingIndependent || rec.framePassed
+    ? "<p>架子已经过了。现在请再独立改一句，才能记掌握或暂过。</p>"
+    : "";
+  stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
+    '<div class="card"><div class="row-head"><b>改一句歌词</b>' + badgeHtml(rec.status) +
+    '</div><p class="small">' + escapeHtml(point.oralName) + "</p><p>" +
+    escapeHtml(point.say || tipText()) + '</p><p>只改一两个词，必须保住这个语法现象，然后交上去。也可以先读出来再改字。</p>' +
+    '<p class="lyric"><b>' + escapeHtml(point.lyricLine) + "</b><small>" +
+    escapeHtml(point.lyricTranslation || "") + "</small></p>" + independentNote +
+    '<textarea id="rewrite-text" rows="3" placeholder="只改一两个词，把这个语法留下来。">' +
+    escapeHtml(rewriteDraft || point.lyricLine) + "</textarea>" + bits.hear +
+    '<button class="chip wide" id="start-mic" type="button">' + (listeningMic ? "停下来" : "读出来（转成文字）") + "</button>" +
+    '<p id="speech-note">' + escapeHtml(speechNote || "先不打发音分。没有开口时，直接改字交上去即可。") + "</p>" +
+    '<button class="chip on wide" id="check-rewrite" type="button">交这一句，看过没过</button>' +
+    '<div id="sentence-result"></div></div>' + bits.frameBlock;
+}
+
+function renderReadMarkTask(point) {
+  var rec = getProgress(point.id);
+  var items = matchingReadings(point);
+  if (!items.length) {
+    stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
+      '<div class="card"><b>阅读里标出同一现象</b><p>这首歌还没有配上同一现象的专四长句，不编造课文。</p></div>';
+    return;
+  }
+  var item = items[0];
+  var sentence = item.text || "";
+  var body = '<p>掌握之后，请在这一句长句里点出同一个现象，并说明它在这句话里起什么作用。没有配套长句的点不会编课文。</p>' +
+    '<p class="pick-line lyric">' + tokenButtons(sentence, pickFrom, pickTo) + "</p>" +
+    '<button class="chip wide" id="clear-pick" type="button">重选</button>' +
+    '<button class="chip on wide" id="confirm-read-pick" type="button">就点这几个词</button>';
+  if (pickReady) {
+    body += '<p>请说明它在这句话里起什么作用。</p>' +
+      '<textarea id="explain-text" rows="3" placeholder="用自己的话说明它在这句话里起什么作用。">' +
+      escapeHtml(explainDraft) + "</textarea>" +
+      '<button class="chip on wide" id="check-read" type="button">交说明，看过没过</button>';
+  }
+  stage.innerHTML = '<button class="chip" id="back-hub" type="button">返回过关</button>' +
+    '<div class="card"><div class="row-head"><b>阅读里标出同一现象</b>' + badgeHtml(rec.status) +
+    '</div><p class="small">' + escapeHtml(point.oralName) + " · " + escapeHtml(item.year || "") +
+    "</p><p>" + escapeHtml(point.say || tipText()) + "</p>" + body +
+    '<div id="sentence-result"></div></div>';
+}
+
+function renderBuilder() {
+  saveOpenDrafts();
+  var attached = pointsForSong((song() && song().title) || "");
+  var point = currentPoint();
+  if (attached.length && !practicePointId && attached.length > 1 && !point) {
+    var picker = attached.map(function (item) {
+      return '<button class="line" data-practice="' + escapeHtml(item.id) + '" type="button"><b>' +
+        escapeHtml(item.oralName) + "</b><small>" + escapeHtml(item.bookName || "") + " · " +
+        statusLabel(getProgress(item.id).status) + "</small></button>";
+    }).join("");
+    stage.innerHTML = '<div class="card"><b>换成你自己的事</b><p>每次只过当前这一条。请先选一条细点。</p></div>' + picker;
+    return;
+  }
+  if (!practicePointId && point) practicePointId = point.id;
+  if (!point) {
+    stage.innerHTML = '<div class="card"><b>换成你自己的事</b><p>' + tipText() +
+      "</p><p>用这个办法写一句你自己的完整话。看完、听完、填空做对都不记掌握。</p>" +
+      '<textarea id="sentence" rows="3" placeholder="写成完整的一句。">' + escapeHtml(passDraft) +
+      '</textarea><button class="chip on wide" id="check-sentence" type="button">交一版，看过没过</button>' +
+      '<div id="sentence-result"></div></div>';
+    return;
+  }
+  if (!practiceTask) {
+    renderPracticeHub(point, attached);
+    return;
+  }
+  if (practiceTask === "explain") {
+    renderExplainTask(point);
+    return;
+  }
+  if (practiceTask === "rewrite") {
+    renderRewriteTask(point);
+    return;
+  }
+  if (practiceTask === "read") {
+    renderReadMarkTask(point);
+    return;
+  }
+  renderOwnTask(point, attached);
+}
+
+function currentPickLine() {
+  var point = currentPoint();
+  if (practiceTask === "read") {
+    var items = matchingReadings(point);
+    return (items[0] && items[0].text) || "";
+  }
+  return (point && point.lyricLine) || "";
+}
+
+function onTokenClick(index) {
+  var n = Number(index);
+  if (pickFrom < 0) {
+    pickFrom = n;
+    pickTo = n;
+  } else if (pickFrom === pickTo && n !== pickFrom) {
+    pickTo = n;
+  } else {
+    pickFrom = n;
+    pickTo = n;
+  }
+  pickReady = false;
+  renderBuilder();
+}
+
+function confirmSelection(forRead) {
+  var point = currentPoint();
+  var line = currentPickLine();
+  var selected = selectedTokens(line, pickFrom, pickTo);
+  var resultBox = document.getElementById("sentence-result") || { innerHTML: "" };
+  var judged;
+  if (forRead) {
+    var item = matchingReadings(point)[0] || {};
+    judged = judgeReadingSelection(selected, item.mark || "", item.text || "");
+  } else {
+    judged = judgePointSelection(selected, point && point.oralName, point && point.say, point && point.lyricLine);
+  }
+  if (!judged.machinePassed) {
+    pickReady = false;
+    var box = document.getElementById("sentence-result");
+    if (box) box.innerHTML = '<div class="verdict fail"><b>这一点还没点到</b><p>' + escapeHtml(judged.note) + "</p></div>";
+    else renderBuilder();
+    var after = document.getElementById("sentence-result");
+    if (!after) {
+      renderBuilder();
+      after = document.getElementById("sentence-result");
+    }
+    if (after) after.innerHTML = '<div class="verdict fail"><b>这一点还没点到</b><p>' + escapeHtml(judged.note) + "</p></div>";
+    return;
+  }
+  pickReady = true;
+  renderBuilder();
+}
+
+function localTaskGate(task, point, payload) {
+  var oral = (point && point.oralName) || focusName();
+  var say = (point && point.say) || tipText();
+  var lyric = (point && point.lyricLine) || "";
+  if (task === "rewrite") {
+    var rewritten = judgeRewrite(lyric, payload.studentSentence, oral, say);
+    return {
+      machinePassed: rewritten.machinePassed,
+      aiPassed: null,
+      aiAvailable: false,
+      verdict: combineVerdict(rewritten.machinePassed, null, false),
+      note: rewritten.note,
+      followUp: rewritten.machinePassed ? "" : rewritten.note,
+      frame: rewritten.frame,
+      kind: rewritten.kind
+    };
+  }
+  if (task === "explain") {
+    var selected = payload.selectedText || "";
+    var explanation = payload.explanation || "";
+    var kind = pointKind(point);
+    var pick = lyric
+      ? judgePointSelection(selected, oral, say, lyric)
+      : { machinePassed: true, note: "", kind: kind, tip: say, frame: explainFrame(kind) };
+    var own = !lyric && payload.studentSentence
+      ? judgePointSentence(payload.studentSentence, oral, say, "")
+      : { machinePassed: true, note: "", kind: kind, tip: say, frame: explainFrame(kind) };
+    var explained = judgeExplanationText(explanation, pick.kind || own.kind || kind);
+    var passed = pick.machinePassed && own.machinePassed && explained.passed;
+    var note = !pick.machinePassed ? pick.note : (!own.machinePassed ? own.note : explained.note);
+    return {
+      machinePassed: passed,
+      aiPassed: null,
+      aiAvailable: false,
+      verdict: combineVerdict(passed, null, false),
+      note: note,
+      followUp: passed ? "" : defaultFollowUp(kind),
+      frame: explainFrame(kind),
+      kind: kind
+    };
+  }
+  if (task === "read-mark") {
+    var item = matchingReadings(point)[0] || {};
+    var readPick = judgeReadingSelection(payload.selectedText || "", item.mark || "", item.text || "");
+    var readExp = judgeExplanationText(payload.explanation || "", pointKind(point));
+    var readPass = readPick.machinePassed && readExp.passed;
+    return {
+      machinePassed: readPass,
+      aiPassed: null,
+      aiAvailable: false,
+      verdict: combineVerdict(readPass, null, false),
+      note: !readPick.machinePassed ? readPick.note : readExp.note,
+      followUp: readPass ? "" : defaultFollowUp(pointKind(point)),
+      frame: explainFrame(pointKind(point)),
+      kind: pointKind(point)
+    };
+  }
+  return localGate(payload.studentSentence || "", point);
+}
+
+function requestGate(sentence, point, extras) {
+  extras = extras || {};
+  var task = extras.task || "own";
+  var payload = {
+    studentSentence: sentence || extras.studentSentence || "",
+    explanation: extras.explanation || "",
+    selectedText: extras.selectedText || "",
+    readingSentence: extras.readingSentence || "",
+    readingMark: extras.readingMark || ""
+  };
+  var local = localTaskGate(task, point, payload);
+  var canFetch = location.protocol === "http:" || location.protocol === "https:";
+  if (!canFetch) return Promise.resolve(local);
+  return fetch("/api/check-sentence", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      passGate: true,
+      task: task,
+      studentSentence: payload.studentSentence,
+      explanation: payload.explanation,
+      selectedText: payload.selectedText,
+      readingSentence: payload.readingSentence,
+      readingMark: payload.readingMark,
+      oralName: (point && point.oralName) || focusName() || "",
+      say: (point && point.say) || tipText() || "",
+      lyricLine: (point && point.lyricLine) || ""
+    })
+  }).then(function (res) {
+    if (!res.ok) throw new Error("bad");
+    return res.json();
+  }).then(function (data) {
+    if (!data || !data.verdict) throw new Error("empty");
+    return data;
+  }).catch(function () {
+    return local;
+  });
+}
+
+function checkPass(isFrameOnly) {
+  var input = document.getElementById(isFrameOnly ? "frame-sentence" : "sentence");
+  var result = document.getElementById("sentence-result");
+  if (!input || !result) return;
+  var text = input.value.trim();
+  if (!text) {
+    result.innerHTML = "<p>先把你写的英文句子打进上面那个框，再交一版。</p>";
+    return;
+  }
+  if (isFrameOnly) frameDraft = text;
+  else passDraft = text;
+  result.innerHTML = "<p>在看有没有用对…</p>";
+  var point = currentPoint();
+  requestGate(text, point, { task: "own" }).then(function (data) {
+    applyVerdict(point && point.id, text, data, isFrameOnly);
+  });
+}
+
+function checkExplain(isFrameOnly) {
+  var point = currentPoint();
+  var result = document.getElementById("sentence-result");
+  var explainBox = document.getElementById(isFrameOnly ? "frame-sentence" : "explain-text");
+  var sentenceBox = document.getElementById("sentence");
+  if (!result) return;
+  var explanation = explainBox ? explainBox.value.trim() : "";
+  var own = sentenceBox ? sentenceBox.value.trim() : passDraft;
+  var selected = selectedTokens((point && point.lyricLine) || "", pickFrom, pickTo);
+  if (point && point.lyricLine && !pickReady && !isFrameOnly) {
+    result.innerHTML = "<p>请先点对承载这个现象的那几个词，再交说明。</p>";
+    return;
+  }
+  if (!explanation) {
+    result.innerHTML = "<p>请再用自己的话说明为什么。</p>";
+    return;
+  }
+  if (isFrameOnly) frameDraft = explanation;
+  else explainDraft = explanation;
+  result.innerHTML = "<p>在看有没有讲到点子上…</p>";
+  requestGate(own, point, { task: "explain", explanation: explanation, selectedText: selected, studentSentence: own }).then(function (data) {
+    applyVerdict(point && point.id, explanation, data, isFrameOnly);
+  });
+}
+
+function checkRewrite(isFrameOnly) {
+  var point = currentPoint();
+  var result = document.getElementById("sentence-result");
+  var box = document.getElementById(isFrameOnly ? "frame-sentence" : "rewrite-text");
+  if (!result || !box) return;
+  var text = box.value.trim();
+  if (!text) {
+    result.innerHTML = "<p>请只改一两个词，再交上来。</p>";
+    return;
+  }
+  if (isFrameOnly) frameDraft = text;
+  else rewriteDraft = text;
+  result.innerHTML = "<p>在看这个语法还在不在…</p>";
+  requestGate(text, point, { task: "rewrite", studentSentence: text }).then(function (data) {
+    applyVerdict(point && point.id, text, data, isFrameOnly);
+  });
+}
+
+function checkReadMark() {
+  var point = currentPoint();
+  var result = document.getElementById("sentence-result");
+  var explainBox = document.getElementById("explain-text");
+  if (!result) return;
+  if (!pickReady) {
+    result.innerHTML = "<p>请先点出同一个现象的那几个词。</p>";
+    return;
+  }
+  var explanation = explainBox ? explainBox.value.trim() : "";
+  if (!explanation) {
+    result.innerHTML = "<p>请说明它在这句话里起什么作用。</p>";
+    return;
+  }
+  explainDraft = explanation;
+  var item = matchingReadings(point)[0] || {};
+  var selected = selectedTokens(item.text || "", pickFrom, pickTo);
+  result.innerHTML = "<p>在看是不是同一个现象…</p>";
+  requestGate("", point, {
+    task: "read-mark",
+    explanation: explanation,
+    selectedText: selected,
+    readingSentence: item.text || "",
+    readingMark: item.mark || ""
+  }).then(function (data) {
+    applyVerdict(point && point.id, explanation, data, false);
+  });
+}
+
+function toggleMic() {
+  if (listeningMic && window._lgRec) {
+    try { window._lgRec.stop(); } catch (error) {}
+    listeningMic = false;
+    speechNote = "已停。可以改打字，或再开口一次。";
+    var note = document.getElementById("speech-note");
+    var btn = document.getElementById("start-mic");
+    if (note) note.textContent = speechNote;
+    if (btn) btn.textContent = practiceTask === "rewrite" ? "读出来（转成文字）" : "对着手机说";
+    return;
+  }
+  var Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Rec) {
+    speechNote = "这台手机不能开口，请改打字。没网时也可以先记暂过。";
+    var missing = document.getElementById("speech-note");
+    if (missing) missing.textContent = speechNote;
+    else {
+      renderBuilder();
+    }
+    return;
+  }
+  var rec = new Rec();
+  rec.lang = "en-US";
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.onresult = function (event) {
+    var text = "";
+    for (var i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
+    if (practiceTask === "rewrite") {
+      rewriteDraft = text;
+      var rewriteBox = document.getElementById("rewrite-text");
+      if (rewriteBox) rewriteBox.value = text;
+    } else {
+      passDraft = text;
+      var box = document.getElementById("sentence");
+      if (box) box.value = text;
+    }
+  };
+  rec.onerror = function (event) {
+    listeningMic = false;
+    speechNote = event.error === "not-allowed"
+      ? "没有麦克风权限，请改打字。"
+      : "没听清或开口不可用，请改打字，或再试一次。";
+    var errNote = document.getElementById("speech-note");
+    var errBtn = document.getElementById("start-mic");
+    if (errNote) errNote.textContent = speechNote;
+    if (errBtn) errBtn.textContent = practiceTask === "rewrite" ? "读出来（转成文字）" : "对着手机说";
+  };
+  rec.onend = function () {
+    listeningMic = false;
+    var hasText = practiceTask === "rewrite" ? rewriteDraft : passDraft;
+    speechNote = hasText
+      ? "已转成文字。先不打发音分，只看语法用对没有。可以改字再交。"
+      : "没听到句子。请再开口一次，或改打字。";
+    var endNote = document.getElementById("speech-note");
+    var endBtn = document.getElementById("start-mic");
+    if (endNote) endNote.textContent = speechNote;
+    if (endBtn) endBtn.textContent = practiceTask === "rewrite" ? "读出来（转成文字）" : "对着手机说";
+  };
+  try {
+    listeningMic = true;
+    speechNote = "请对着手机说话…";
+    window._lgRec = rec;
+    var startNote = document.getElementById("speech-note");
+    var startBtn = document.getElementById("start-mic");
+    if (startNote) startNote.textContent = speechNote;
+    if (startBtn) startBtn.textContent = "停下来";
+    rec.start();
+  } catch (error) {
+    listeningMic = false;
+    speechNote = "开口没打开，请改打字。";
+    var failNote = document.getElementById("speech-note");
+    if (failNote) failNote.textContent = speechNote;
+  }
+}
+
+function handlePassClick(event) {
+  var practice = event.target.closest("[data-practice]");
+  if (practice) {
+    startPractice(practice.getAttribute("data-practice") || "");
+    return true;
+  }
+  var taskBtn = event.target.closest("[data-task]");
+  if (taskBtn) {
+    practiceTask = taskBtn.getAttribute("data-task") || "";
+    pickFrom = -1;
+    pickTo = -1;
+    pickReady = false;
+    speechNote = "";
+    waitingIndependent = Boolean(practicePointId && getProgress(practicePointId).framePassed);
+    renderBuilder();
+    return true;
+  }
+  if (event.target.id === "back-hub") {
+    backToHub();
+    return true;
+  }
+  if (event.target.id === "pick-point") {
+    practicePointId = "";
+    practiceTask = "";
+    renderBuilder();
+    return true;
+  }
+  if (event.target.id === "check-frame") {
+    if (practiceTask === "explain") checkExplain(true);
+    else if (practiceTask === "rewrite") checkRewrite(true);
+    else checkFrame();
+    return true;
+  }
+  if (event.target.id === "check-explain") {
+    checkExplain(false);
+    return true;
+  }
+  if (event.target.id === "check-rewrite") {
+    checkRewrite(false);
+    return true;
+  }
+  if (event.target.id === "check-read") {
+    checkReadMark();
+    return true;
+  }
+  if (event.target.id === "confirm-pick") {
+    confirmSelection(false);
+    return true;
+  }
+  if (event.target.id === "confirm-read-pick") {
+    confirmSelection(true);
+    return true;
+  }
+  if (event.target.id === "clear-pick") {
+    pickFrom = -1;
+    pickTo = -1;
+    pickReady = false;
+    renderBuilder();
+    return true;
+  }
+  var tok = event.target.closest("[data-tok]");
+  if (tok) {
+    onTokenClick(tok.getAttribute("data-tok"));
+    return true;
+  }
+  if (event.target.id === "start-mic") {
+    toggleMic();
+    return true;
+  }
+  if (event.target.id === "use-pattern") {
+    var point = defaultPracticePoint();
+    if (point) startPractice(point.id);
+    else {
+      mode = "builder";
+      render();
+    }
+    return true;
+  }
+  var heard = event.target.closest("[data-heard-point]");
+  if (heard) markHeard(heard.getAttribute("data-heard-point") || "");
+  return false;
+}

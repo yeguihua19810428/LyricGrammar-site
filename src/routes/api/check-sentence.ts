@@ -1,5 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { combineVerdict } from "@/lyric/utils/pointProgress.mjs";
+import {
+  defaultFollowUp,
+  judgeExplanationText,
+  judgePointSelection,
+  judgePointSentence,
+  judgeReadingSelection,
+  judgeRewrite,
+} from "@/lyric/utils/machineJudge.mjs";
 import { judgeOwnSentence, localSentenceFeedback, type SentenceFeedback } from "@/lyric/utils/sentenceCheck";
 import { readDeepseekKey } from "@/server/deepseekKey";
 
@@ -42,13 +50,72 @@ async function askPassFail(input: {
   base: string;
   key: string;
   model: string;
+  task: string;
   studentSentence: string;
   say: string;
   lyricLine: string;
+  selectedText?: string;
+  explanation?: string;
+  readingSentence?: string;
 }): Promise<{ passed: boolean; note: string; followUp: string; frame: string } | null> {
   const endpoint = input.base.replace(/\/$/, "") + "/chat/completions";
-  const lines = ["口语提示：" + input.say, "学生写的：" + input.studentSentence];
-  if (input.lyricLine) lines.splice(1, 0, "教学歌词：" + input.lyricLine);
+  const task = input.task || "own";
+  const lines: string[] = ["口语提示：" + input.say];
+  if (task === "read-mark") {
+    if (input.readingSentence) lines.push("这一句长句：" + input.readingSentence);
+    if (input.selectedText) lines.push("学生点出的部分：" + input.selectedText);
+    if (input.explanation) lines.push("学生的说明：" + input.explanation);
+  } else if (task === "explain") {
+    if (input.lyricLine) lines.push("教学歌词：" + input.lyricLine);
+    if (input.selectedText) lines.push("学生点出的部分：" + input.selectedText);
+    if (input.studentSentence) lines.push("学生写的句子：" + input.studentSentence);
+    if (input.explanation) lines.push("学生的说明：" + input.explanation);
+  } else if (task === "rewrite") {
+    if (input.lyricLine) lines.push("原来的教学歌词：" + input.lyricLine);
+    lines.push("学生改过的那一句：" + input.studentSentence);
+  } else {
+    if (input.lyricLine) lines.push("教学歌词：" + input.lyricLine);
+    lines.push("学生写的：" + input.studentSentence);
+  }
+  const system =
+    task === "explain"
+      ? [
+          "你在看学生有没有讲到点子上。只用口语，不要用语法术语。",
+          "只根据口语提示、一句教学歌词（如有）、学生点出的部分、学生的说明来判断。",
+          "不要要求学生复述歌词。",
+          "只返回 JSON，不要 markdown：",
+          '{"passed":true,"note":"","followUp":"","frame":""}',
+          "没过时：note 说明哪里不对；followUp 只追问一句，例如「写成 will find 会怎样」；frame 给一个说明架子，让学生填自己的话。",
+          "过了时：followUp 和 frame 留空，note 用一句话肯定。",
+        ]
+      : task === "rewrite"
+        ? [
+            "你只评学生改过的这一句得不得体，并看这个语法现象还在不在。只用口语，不要用语法术语。",
+            "只根据口语提示、原来那一句教学歌词、学生改过的那一句来判断。不要展开整首歌。",
+            "丢了语法就没过。",
+            "只返回 JSON，不要 markdown：",
+            '{"passed":true,"note":"","followUp":"","frame":""}',
+            "没过时：note 说明哪里不对；followUp 只追问一句；frame 可留空。",
+            "过了时：followUp 和 frame 留空，note 用一句话肯定。",
+          ]
+        : task === "read-mark"
+          ? [
+              "你在看学生有没有在这一句长句里标出同一个语法现象，并说明它在这句话里起什么作用。只用口语，不要用语法术语。",
+              "只根据口语提示、这一句长句、学生点出的部分、学生的说明来判断。不要使用整段课文。",
+              "只返回 JSON，不要 markdown：",
+              '{"passed":true,"note":"","followUp":"","frame":""}',
+              "没过时：note 说明哪里不对；followUp 只追问一句。",
+              "过了时：followUp 和 frame 留空，note 用一句话肯定。",
+            ]
+          : [
+              "你在判断学生有没有用对当前这一条语法现象。只用口语，不要用语法术语。",
+              "只根据口语提示、一句教学歌词（如有）、学生写的那一句来判断。",
+              "不要要求学生复述歌词，要看他是不是用这个办法说自己的事。",
+              "只返回 JSON，不要 markdown：",
+              '{"passed":true,"note":"","followUp":"","frame":""}',
+              "没过时：note 说明哪里不对；followUp 只追问一句；frame 给一个句子架子，让学生填自己的内容，不是选择题。",
+              "过了时：followUp 和 frame 留空，note 用一句话肯定。",
+            ];
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -60,18 +127,7 @@ async function askPassFail(input: {
       thinking: { type: "disabled" },
       temperature: 0.2,
       messages: [
-        {
-          role: "system",
-          content: [
-            "你在判断学生有没有用对当前这一条语法现象。只用口语，不要用语法术语。",
-            "只根据口语提示、一句教学歌词（如有）、学生写的那一句来判断。",
-            "不要要求学生复述歌词，要看他是不是用这个办法说自己的事。",
-            "只返回 JSON，不要 markdown：",
-            '{"passed":true,"note":"","followUp":"","frame":""}',
-            "没过时：note 说明哪里不对；followUp 只追问一句；frame 给一个句子架子，让学生填自己的内容，不是选择题。",
-            "过了时：followUp 和 frame 留空，note 用一句话肯定。",
-          ].join("\n"),
-        },
+        { role: "system", content: system.join("\n") },
         { role: "user", content: lines.join("\n") },
       ],
     }),
@@ -107,13 +163,55 @@ export const Route = createFileRoute("/api/check-sentence")({
         const lyricLine = clip(body.lyricLine, 240);
         const formula = clip(body.formula, 200);
         const promptContext = clip(body.promptContext, 400);
-        const passGate = Boolean(body.passGate) || Boolean(oralName || say || lyricLine);
-        const judged = judgeOwnSentence({
+        const task = clip(body.task, 40) || "own";
+        const selectedText = clip(body.selectedText, 240);
+        const explanation = clip(body.explanation, 500);
+        const readingSentence = clip(body.readingSentence, 400);
+        const readingMark = clip(body.readingMark, 80);
+        const passGate = Boolean(body.passGate) || Boolean(oralName || say || lyricLine || selectedText || explanation);
+        let judged = judgeOwnSentence({
           studentSentence,
           oralName: oralName || formula,
           say: say || promptContext,
           lyricLine,
         });
+        if (task === "explain") {
+          if (lyricLine) {
+            const picked = judgePointSelection(selectedText, oralName || formula, say || promptContext, lyricLine);
+            const explained = judgeExplanationText(explanation, picked.kind);
+            judged = {
+              kind: picked.kind,
+              machinePassed: picked.machinePassed && explained.passed,
+              note: !picked.machinePassed ? picked.note : explained.note,
+              tip: picked.tip,
+              frame: picked.frame,
+            };
+          } else {
+            const own = studentSentence
+              ? judgePointSentence(studentSentence, oralName || formula, say || promptContext, "")
+              : { kind: judged.kind, machinePassed: true, note: "", tip: judged.tip, frame: judged.frame };
+            const explained = judgeExplanationText(explanation, own.kind);
+            judged = {
+              kind: own.kind,
+              machinePassed: own.machinePassed && explained.passed,
+              note: !own.machinePassed ? own.note : explained.note,
+              tip: own.tip || judged.tip,
+              frame: own.frame || judged.frame,
+            };
+          }
+        } else if (task === "rewrite") {
+          judged = judgeRewrite(lyricLine, studentSentence, oralName || formula, say || promptContext);
+        } else if (task === "read-mark") {
+          const picked = judgeReadingSelection(selectedText, readingMark, readingSentence);
+          const explained = judgeExplanationText(explanation, judged.kind);
+          judged = {
+            kind: judged.kind,
+            machinePassed: picked.machinePassed && explained.passed,
+            note: !picked.machinePassed ? picked.note : explained.note,
+            tip: judged.tip,
+            frame: judged.frame,
+          };
+        }
         const savedKey = await readDeepseekKey();
         const base = process.env.CHECK_AI_BASE_URL || (savedKey ? "https://api.deepseek.com/v1" : "");
         const key = process.env.CHECK_AI_API_KEY || savedKey;
@@ -123,18 +221,23 @@ export const Route = createFileRoute("/api/check-sentence")({
           let aiPassed: boolean | null = null;
           let aiAvailable = false;
           let note = judged.note;
-          let followUp = judged.machinePassed ? "" : judged.note;
+          let followUp = judged.machinePassed ? "" : judged.note || defaultFollowUp(judged.kind);
           let frame = judged.frame;
           let source: "configured-ai" | "local" = "local";
-          if (base && key && studentSentence) {
+          const hasOutput = Boolean(studentSentence || explanation || selectedText);
+          if (base && key && hasOutput) {
             try {
               const ai = await askPassFail({
                 base,
                 key,
                 model,
+                task,
                 studentSentence,
                 say: judged.tip || say || promptContext,
                 lyricLine,
+                selectedText,
+                explanation,
+                readingSentence,
               });
               if (ai) {
                 aiAvailable = true;
@@ -160,7 +263,7 @@ export const Route = createFileRoute("/api/check-sentence")({
             kind: judged.kind,
             source,
           };
-          return Response.json({ ...gate, feedback: toFeedback(gate, studentSentence) });
+          return Response.json({ ...gate, feedback: toFeedback(gate, studentSentence || explanation) });
         }
 
         // Older callers still send a free-form instruction. Do not use this

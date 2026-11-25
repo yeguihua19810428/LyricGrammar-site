@@ -75,7 +75,9 @@ describe("machine judge for five existing lessons", () => {
 
   it("Count On Me: If + present and will passes; If will fails", () => {
     assert.equal(judge("count", "If it rains tomorrow, I will stay at home.").machinePassed, true);
+    assert.equal(judge("count", "If it rains tomorrow I will stay at home.").machinePassed, true);
     assert.equal(judge("count", "If it will rain tomorrow, I will stay at home.").machinePassed, false);
+    assert.equal(judge("count", "If you will find yourself stuck in the middle of the sea.").machinePassed, false);
     assert.equal(judge("count", "If it rains tomorrow.").machinePassed, false);
     assert.equal(judge("count", "I will stay at home tomorrow.").machinePassed, false);
   });
@@ -84,5 +86,93 @@ describe("machine judge for five existing lessons", () => {
     assert.equal(judge("count", "If rains").machinePassed, false);
     assert.equal(judge("count", "如果明天下雨我就在家。").machinePassed, false);
     assert.equal(judge("moon", "").machinePassed, false);
+  });
+});
+
+import {
+  judgePointSelection,
+  judgeRewrite,
+  judgeReadingSelection,
+  judgeExplanationText,
+  defaultFollowUp,
+  speakPrompt,
+  wordEditDistance,
+} from "./machineJudge.mjs";
+
+function select(song: keyof typeof CASES, selected: string) {
+  const point = CASES[song];
+  return judgePointSelection(selected, point.oralName, point.say, point.lyricLine);
+}
+
+function rewrite(song: keyof typeof CASES, next: string) {
+  const point = CASES[song];
+  return judgeRewrite(point.lyricLine, next, point.oralName, point.say);
+}
+
+describe("phase 1: point the carrying words", () => {
+  it("accepts the phenomenon span and blocks a wrong part for the five lessons", () => {
+    assert.equal(select("moon", "They say").machinePassed, true);
+    assert.equal(select("moon", "I've gone mad").machinePassed, false);
+    assert.equal(select("someone", "to hold").machinePassed, true);
+    assert.equal(select("someone", "hide from the light").machinePassed, false);
+    assert.equal(select("lovely", "Walking").machinePassed, true);
+    assert.equal(select("lovely", "out of town").machinePassed, false);
+    assert.equal(select("blank", "dressed").machinePassed, true);
+    assert.equal(select("blank", "nightmare").machinePassed, false);
+    assert.equal(select("count", "If you ever find").machinePassed, true);
+    assert.equal(select("count", "the sea").machinePassed, false);
+  });
+
+  it("blocks selecting the whole long line", () => {
+    assert.equal(select("someone", CASES.someone.lyricLine).machinePassed, false);
+    assert.equal(select("count", CASES.count.lyricLine).machinePassed, false);
+  });
+
+  it("asks a one-sentence follow-up for off-point explanations", () => {
+    assert.equal(judgeExplanationText("If 后面当现在说，will 放在后面。", "future-if").passed, true);
+    assert.equal(judgeExplanationText("很好听。", "future-if").passed, false);
+    assert.match(defaultFollowUp("future-if"), /will find/);
+    assert.match(speakPrompt("future-if"), /下雨/);
+  });
+});
+
+describe("phase 3: rewrite keeps the phenomenon", () => {
+  it("allows changing one or two words when the grammar stays", () => {
+    assert.equal(rewrite("moon", "They say I've gone home").machinePassed, true);
+    assert.equal(rewrite("count", "If you ever find yourself stuck in the middle of the street").machinePassed, true);
+    assert.equal(rewrite("lovely", "Walking out of school").machinePassed, true);
+    assert.equal(rewrite("blank", "Cause, darling, I'm a nightmare dressed like a movie").machinePassed, true);
+    assert.equal(rewrite("someone", "Ain't like you to hold back or hide from the dark").machinePassed, true);
+  });
+
+  it("fails when the grammar is dropped, unchanged, or rewritten too much", () => {
+    assert.equal(rewrite("moon", "They said I've gone mad").machinePassed, false);
+    assert.equal(rewrite("count", "If you will find yourself stuck in the middle of the sea").machinePassed, false);
+    assert.equal(rewrite("lovely", "I am walking out of town").machinePassed, false);
+    assert.equal(rewrite("blank", CASES.blank.lyricLine).machinePassed, false);
+    assert.equal(
+      rewrite(
+        "count",
+        "When the weather is nice I go swimming with all of my friends in a huge blue ocean",
+      ).machinePassed,
+      false,
+    );
+    assert.ok(wordEditDistance(CASES.count.lyricLine, CASES.count.lyricLine) === 0);
+    assert.ok(wordEditDistance("If you ever find yourself stuck", "If you ever find yourself stuck") === 0);
+  });
+});
+
+describe("phase 3: reading mark is the same phenomenon", () => {
+  it("accepts the matching span and blocks a different part", () => {
+    assert.equal(
+      judgeReadingSelection("If you live", "If you live", "If you live in a society where most people are literate, then you will feel ashamed").machinePassed,
+      true,
+    );
+    assert.equal(
+      judgeReadingSelection("you will feel ashamed", "If you live", "If you live in a society where most people are literate, then you will feel ashamed").machinePassed,
+      false,
+    );
+    assert.equal(judgeReadingSelection("she says", "she says", "the more I realized this would help, she says.").machinePassed, true);
+    assert.equal(judgeReadingSelection("our budget", "she says", "the more I realized this would help, she says.").machinePassed, false);
   });
 });
